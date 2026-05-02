@@ -2,7 +2,7 @@
 
 | 項目                   | 内容                                                                     |
 | ---------------------- | ------------------------------------------------------------------------ |
-| ドキュメントバージョン | v1.0                                                                     |
+| ドキュメントバージョン | v1.1                                                                     |
 | 想定運用開始           | 2026年5月中旬                                                            |
 | 関連ドキュメント       | [`requirements.md`](./requirements.md)（全体構想・将来構想を含む完全版） |
 
@@ -31,7 +31,7 @@
 ### 3.1 含むもの（MVPで実装）
 
 ✅ バックエンドAPI基盤（Hono on Cloudflare Workers）
-✅ DB環境（Neon PostgreSQL + Hyperdrive + Drizzle ORM）
+✅ DB環境（Cloudflare D1 + Drizzle ORM）
 ✅ 4テーブルのスキーマとマイグレーション（participants / events / sessions / mentors）
 ✅ Google Sheets API連携（学生側スプシの読み書き）
 ✅ チェックインiPadアプリ（PWA・QR/バーコードスキャン）
@@ -58,62 +58,53 @@
 
 ### 4.1 Drizzleスキーマ
 
-`packages/db/src/schema.ts` に以下を実装する。
+`packages/db/src/schema.ts` に以下を実装する。D1 は SQLite ベースなので `drizzle-orm/sqlite-core` を使う。
 
 ```typescript
-import {
-  pgTable,
-  uuid,
-  varchar,
-  text,
-  timestamp,
-  boolean,
-  date,
-  pgEnum,
-  index,
-} from "drizzle-orm/pg-core";
-
-export const roleEnum = pgEnum("role", ["admin", "mentor"]);
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
 // 参加者
-export const participants = pgTable("participants", {
-  id: varchar("id", { length: 8 }).primaryKey(), // 例: 26001
-  preRegistrationId: varchar("pre_registration_id", { length: 32 })
-    .unique()
+export const participants = sqliteTable("participants", {
+  id: text("id").primaryKey(), // 例: '26001'
+  preRegistrationId: text("pre_registration_id").unique().notNull(),
+  nickname: text("nickname").notNull(),
+  grade: text("grade").notNull(),
+  // タイムスタンプは UTC の Unix epoch ms で保存し、表示時に JST 変換
+  activatedAt: integer("activated_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => new Date())
     .notNull(),
-  nickname: varchar("nickname", { length: 50 }).notNull(),
-  grade: varchar("grade", { length: 10 }).notNull(),
-  activatedAt: timestamp("activated_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  active: boolean("active").default(true).notNull(),
+  active: integer("active", { mode: "boolean" }).default(true).notNull(),
 });
 
 // 開催日
-export const events = pgTable("events", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  date: date("date").unique().notNull(),
+export const events = sqliteTable("events", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  date: text("date").unique().notNull(), // 'YYYY-MM-DD' (JST基準)
   note: text("note"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => new Date())
     .notNull(),
 });
 
 // 来場セッション
-export const sessions = pgTable(
+export const sessions = sqliteTable(
   "sessions",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    participantId: varchar("participant_id", { length: 8 })
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    participantId: text("participant_id")
       .references(() => participants.id)
       .notNull(),
-    eventId: uuid("event_id")
+    eventId: text("event_id")
       .references(() => events.id)
       .notNull(),
-    checkedInAt: timestamp("checked_in_at", { withTimezone: true })
-      .defaultNow()
+    checkedInAt: integer("checked_in_at", { mode: "timestamp_ms" })
+      .$defaultFn(() => new Date())
       .notNull(),
-    checkedOutAt: timestamp("checked_out_at", { withTimezone: true }),
+    checkedOutAt: integer("checked_out_at", { mode: "timestamp_ms" }),
   },
   (t) => ({
     idxParticipantEvent: index("idx_sessions_participant_event").on(
@@ -128,33 +119,49 @@ export const sessions = pgTable(
 );
 
 // メンター（運営者）
-export const mentors = pgTable("mentors", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  email: varchar("email", { length: 255 }).unique().notNull(),
-  name: varchar("name", { length: 100 }).notNull(),
-  role: roleEnum("role").default("mentor").notNull(),
-  active: boolean("active").default(true).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
+export const mentors = sqliteTable("mentors", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  email: text("email").unique().notNull(),
+  name: text("name").notNull(),
+  role: text("role", { enum: ["admin", "mentor"] })
+    .default("mentor")
     .notNull(),
-  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  active: integer("active", { mode: "boolean" }).default(true).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .$defaultFn(() => new Date())
+    .notNull(),
+  lastLoginAt: integer("last_login_at", { mode: "timestamp_ms" }),
 });
 
 // Better Auth が利用するテーブル（user / session / account / verification）は
-// Better Auth CLI で自動生成。上記とは別管理。
+// Better Auth CLI で SQLite/D1 用に自動生成。上記とは別管理。
 ```
+
+**SQLite 固有の注意点**:
+
+- 文字列の長さ制約は SQLite では強制されない。代わりに `packages/shared/src/schemas/` の Zod スキーマで長さ検証する
+- `boolean` は内部的には `0`/`1` の INTEGER。Drizzle 経由では JS の `boolean` として扱える
+- タイムスタンプは Unix epoch ms（INTEGER）で保存。`withTimezone` 概念はないが、保存は UTC、表示時に `Asia/Tokyo` で変換するルールで運用する
+- `enum` は `text` の値域制約として表現される（マイグレーション SQL では CHECK 制約）
+- 外部キー制約は D1 でデフォルト ON。`PRAGMA foreign_keys = ON;` 不要
 
 ### 4.2 ID採番ロジック
 
 ```typescript
 // 例: 2026年度なら "26" + 連番（001から）
-// 採番は participants テーブルへのINSERT時にトランザクション内で実行
+// D1 はインタラクティブ・トランザクションがないため、SELECT で直近IDを取得 →
+// 計算 → INSERT の流れで実装。PK 衝突時は再採番リトライで対応する。
 
 import { desc, like } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 
-async function generateNextParticipantId(tx: Tx): Promise<string> {
+async function generateNextParticipantId(
+  db: DrizzleD1Database<typeof schema>,
+): Promise<string> {
   const yearPrefix = String(new Date().getFullYear() % 100).padStart(2, "0"); // "26"
-  const result = await tx
+  const result = await db
     .select({ id: participants.id })
     .from(participants)
     .where(like(participants.id, `${yearPrefix}%`))
@@ -173,25 +180,28 @@ async function generateNextParticipantId(tx: Tx): Promise<string> {
 
 注意点:
 
-- トランザクション内で実行しないと採番衝突する
-- 同時アクティベートはほぼ起こらないが、念のためINSERT失敗時にリトライするロジックを入れる
+- D1 はインタラクティブ・トランザクションを持たないため、PG時代のような「SELECT → INSERT を同一トランザクションで保護」はできない
+- 同時アクティベートはほぼ起こらない（運用上、複数の子が同時タップする確率は低い）が、INSERT 時に PK 重複エラー（`UNIQUE constraint failed`）が出たら採番→挿入をリトライする
 - 年度判定は会計年度ではなく西暦下2桁とする
 
 ### 4.3 events自動生成ロジック
 
 ```typescript
 import { eq } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 
-async function getOrCreateTodayEvent(tx: Tx): Promise<string> {
+async function getOrCreateTodayEvent(
+  db: DrizzleD1Database<typeof schema>,
+): Promise<string> {
   // JST で「今日」を判定
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date()); // "YYYY-MM-DD"
+  }).format(new Date()); // 'YYYY-MM-DD'
 
-  const [event] = await tx
+  const [event] = await db
     .insert(events)
     .values({ date: today })
     .onConflictDoNothing()
@@ -199,7 +209,7 @@ async function getOrCreateTodayEvent(tx: Tx): Promise<string> {
 
   if (event) return event.id;
 
-  const [existing] = await tx
+  const [existing] = await db
     .select()
     .from(events)
     .where(eq(events.date, today))
@@ -208,7 +218,7 @@ async function getOrCreateTodayEvent(tx: Tx): Promise<string> {
 }
 ```
 
-タイムゾーン注意: Workersのデフォルトタイムゾーンはサーバーロケーションに依存しないUTC。JSTで「今日」を判定する必要があるので、上記のように明示的に変換する。
+タイムゾーン注意: Workersのデフォルトタイムゾーンはサーバーロケーションに依存しないUTC。JSTで「今日」を判定する必要があるので、上記のように明示的に変換する。SQLite の `onConflictDoNothing` も Drizzle の同名メソッドで動作する（`UNIQUE` 制約に対する `ON CONFLICT DO NOTHING`）。
 
 ---
 
@@ -456,16 +466,25 @@ export async function updateSheetRow(
 - `NOT_FOUND`: 事前登録IDが存在しない
 - `SHEETS_WRITE_FAILED`: スプシ書き戻し失敗
 
-**サーバー側処理順**:
+**サーバー側処理順（D1 saga パターン）**:
 
-1. DB トランザクション開始
-2. 事前登録IDから当該行をスプシで検索（または読み取りキャッシュから）
-3. participants にレコード作成（採番含む）
-4. events を取得 or 作成
-5. sessions レコード作成（checked_in_at = now）
-6. スプシ書き戻し（E/F/G列更新）
-7. スプシ書き戻し成功時のみコミット、失敗時はロールバック
-8. レスポンス返却
+D1 にはインタラクティブ・トランザクションがないため、「DB書き込み → スプシ書き戻し → 失敗時は補償処理」のフローで原子性に近い保証を作る。
+
+1. 事前登録IDから当該行をスプシで検索（または読み取りキャッシュから）。なければ `NOT_FOUND`
+2. 内製ID採番（`generateNextParticipantId`）
+3. event_id を取得 or 作成（`getOrCreateTodayEvent`）
+4. **`db.batch([...])` で原子的に書き込み**:
+   - `INSERT participants`（id, preRegistrationId, nickname, grade）
+   - `INSERT sessions`（participantId, eventId, checkedInAt）
+5. スプシ書き戻し（E/F/G列を更新）
+6. **スプシ書き戻し失敗時は補償処理**:
+   - `db.batch([...])` で `DELETE sessions` → `DELETE participants` を実行
+   - クライアントには `SHEETS_WRITE_FAILED` を返す
+7. すべて成功した場合のみレスポンス返却
+
+**補償処理が失敗するレアケース**: 補償の DELETE 自体が失敗した場合は、participants / sessions に「DBには登録済みだがスプシ未反映」のゴーストレコードが残る。エラーログに internal ID を残し、運用者が管理画面（または直接D1コンソール）から手動修復する。MVP ではここまでの考慮で十分。
+
+**PK 衝突時のリトライ**: `INSERT participants` で `UNIQUE constraint failed: participants.id` が出た場合（同時アクティベートで採番が被った場合）は、ステップ2から最大3回リトライする。
 
 #### `POST /checkin/sessions/check-in`
 
@@ -711,9 +730,8 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 ### 8.1 必要なアカウント・サービス
 
 - GitHubアカウント
-- Cloudflareアカウント（Workers + Hyperdrive用）
+- Cloudflareアカウント（Workers + D1用）
 - Vercelアカウント（フロント2つ用：checkin / admin）
-- Neonアカウント（PostgreSQL用）
 - Google Cloud Platformアカウント（Sheets API + OAuth用）
 
 ### 8.2 初期セットアップ手順
@@ -750,8 +768,9 @@ for pkg in db shared ui auth; do
 done
 
 # 7. 各種依存追加
-pnpm --filter @tecnova/db add drizzle-orm postgres
+pnpm --filter @tecnova/db add drizzle-orm
 pnpm --filter @tecnova/db add -D drizzle-kit
+pnpm --filter @tecnova/api add @cloudflare/workers-types
 pnpm --filter @tecnova/shared add zod
 pnpm --filter @tecnova/auth add better-auth
 ```
@@ -778,21 +797,15 @@ pnpm --filter @tecnova/auth add better-auth
 }
 ```
 
-### 8.4 Cloudflare/Neon/Vercel接続
+### 8.4 Cloudflare D1 / Vercel接続
 
-#### Neon
-
-1. https://neon.tech でアカウント作成
-2. プロジェクト作成（リージョン: Asia Pacific）
-3. 接続文字列をコピー
-
-#### Cloudflare Hyperdrive
+#### Cloudflare D1
 
 ```bash
 cd apps/api
 npx wrangler login
-npx wrangler hyperdrive create tecnova-hyperdrive --connection-string="<NEON_CONNECTION_STRING>"
-# 出力されたhyperdrive idを wrangler.toml に追加
+npx wrangler d1 create tecnova-db
+# 出力された database_id を wrangler.toml に追加
 ```
 
 `apps/api/wrangler.toml`:
@@ -801,11 +814,12 @@ npx wrangler hyperdrive create tecnova-hyperdrive --connection-string="<NEON_CON
 name = "tecnova-api"
 main = "src/index.ts"
 compatibility_date = "2026-04-01"
-compatibility_flags = ["nodejs_compat"]
 
-[[hyperdrive]]
-binding = "HYPERDRIVE"
-id = "<hyperdrive-id>"
+[[d1_databases]]
+binding = "DB"
+database_name = "tecnova-db"
+database_id = "<d1-database-id>"
+migrations_dir = "../../packages/db/drizzle"
 
 [vars]
 GOOGLE_SHEETS_ID = "<spreadsheet-id>"   # 公開可なIDなのでvarsでよい
@@ -818,13 +832,29 @@ BETTER_AUTH_URL = "https://api.example.workers.dev"
 # BETTER_AUTH_SECRET
 ```
 
+Workers コードからは `c.env.DB`（型は `D1Database`）でアクセスし、Drizzle に渡す：
+
+```typescript
+import { drizzle } from "drizzle-orm/d1";
+import * as schema from "@tecnova/db/schema";
+
+// Hono context 内で
+const db = drizzle(c.env.DB, { schema });
+```
+
 #### Drizzleマイグレーション
 
 ```bash
 cd packages/db
 # drizzle.config.ts を作成
-pnpm drizzle-kit generate  # SQLマイグレーション生成
-pnpm drizzle-kit migrate   # Neonに適用
+pnpm drizzle-kit generate  # SQLマイグレーション生成（packages/db/drizzle/ に出力）
+
+# ローカル D1（Miniflare）に適用
+cd ../../apps/api
+npx wrangler d1 migrations apply tecnova-db --local
+
+# 本番 D1 に適用
+npx wrangler d1 migrations apply tecnova-db --remote
 ```
 
 `packages/db/drizzle.config.ts`:
@@ -835,10 +865,8 @@ import { defineConfig } from "drizzle-kit";
 export default defineConfig({
   schema: "./src/schema.ts",
   out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
+  dialect: "sqlite",
+  // マイグレーション SQL の生成のみ。適用は wrangler d1 migrations apply で行う
 });
 ```
 
@@ -871,13 +899,13 @@ export default defineConfig({
 
 ### W1: 基盤構築週
 
-| 日      | タスク                                                               |
-| ------- | -------------------------------------------------------------------- |
-| Day 1-2 | モノレポ初期化、各appsの雛形作成、Biome/Turborepo設定、GitHub連携    |
-| Day 3   | Drizzleスキーマ定義、Neonへマイグレーション適用、ローカルDBテスト    |
-| Day 4   | Hono on Workers疎通、Hyperdrive接続確認、`/health`エンドポイント     |
-| Day 5   | **Google Sheets API疎通PoC（読み取り＋書き込み）。ここが最大の山場** |
-| Day 6-7 | 「初めての方」フロー実装（API + チェックインiPad画面）               |
+| 日      | タスク                                                                     |
+| ------- | -------------------------------------------------------------------------- |
+| Day 1-2 | モノレポ初期化、各appsの雛形作成、Biome/Turborepo設定、GitHub連携          |
+| Day 3   | Drizzleスキーマ定義、D1作成、ローカルD1（Miniflare）にマイグレーション適用 |
+| Day 4   | Hono on Workers疎通、D1バインディング確認、`/health`エンドポイント         |
+| Day 5   | **Google Sheets API疎通PoC（読み取り＋書き込み）。ここが最大の山場**       |
+| Day 6-7 | 「初めての方」フロー実装（API + チェックインiPad画面）                     |
 
 ### W2: 機能実装週
 
@@ -972,14 +1000,28 @@ export default defineConfig({
 - アクセストークンは1時間有効、モジュールスコープでキャッシュして使い回す
 - PEM鍵の改行が `\n` のままだとパース失敗するので、JSON.parseすれば自動展開される
 
-### 11.3 Hyperdrive接続エラー
+### 11.3 D1 関連の落とし穴
 
-**症状**: `connection is insecure` エラー
+**症状**: `D1_ERROR: no such table: ...`
 
 **対応**:
 
-- 接続文字列に `?sslmode=require` を追加
-- node-postgres使用時は `ssl: 'require'` オプション
+- `wrangler d1 migrations apply tecnova-db --local` を流し忘れているケースが大半
+- `wrangler.toml` の `[[d1_databases]]` ブロックの `database_id` が本番DBと一致しているか確認
+- ローカル開発時は `--local` フラグ、本番反映時は `--remote` フラグの付け間違いに注意
+
+**症状**: `Error: D1_ERROR: A prepared SQL statement must contain only one statement.`
+
+**対応**:
+
+- D1 では1ステートメント単位でしか実行できない。複数ステートメントを流したい場合は `db.batch([...])` を使う
+- インタラクティブ・トランザクション（begin/commit を JS から制御）はサポートされない。本書 6.1節「アクティベート処理」のような saga パターンで補償処理ベースに設計する
+
+**症状**: `UNIQUE constraint failed: participants.id`
+
+**対応**:
+
+- 同時アクティベートで採番が衝突した。`generateNextParticipantId` から再実行するリトライ（最大3回）を実装する
 
 ### 11.4 iPadのカメラが動かない
 
@@ -991,15 +1033,16 @@ export default defineConfig({
 - iOS Safariの設定でカメラ許可を確認
 - `getUserMedia` のpermission stateを明示的にチェック
 
-### 11.5 Drizzleマイグレーションが Neon に反映されない
+### 11.5 Drizzleマイグレーションが D1 に反映されない
 
-**症状**: `pnpm drizzle-kit migrate` 実行後にスキーマが変わらない
+**症状**: `wrangler d1 migrations apply` 実行後にスキーマが変わらない
 
 **対応**:
 
-- `DATABASE_URL` 環境変数が正しいか確認
-- Neonダッシュボードで対象ブランチを確認
-- 開発用ブランチと本番用ブランチを分けて運用する（Neonのbranching機能）
+- `wrangler d1 migrations list tecnova-db --local`（または `--remote`）で適用済みマイグレーションを確認
+- `packages/db/drizzle/` に SQL が生成されているか確認（生成は `pnpm --filter @tecnova/db db:generate`）
+- `wrangler.toml` の `migrations_dir` パスが `apps/api` から見て正しいか確認（`../../packages/db/drizzle`）
+- ローカルと本番の D1 は完全に独立。ローカルで動作確認後、本番には別途 `--remote` で適用する
 
 ---
 

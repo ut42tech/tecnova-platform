@@ -120,16 +120,18 @@ APIサーバ（`apps/api`）は Cloudflare Workers で動作します。以下�
 
 実装サンプル: [`docs/mvp.md` 5.4節](./docs/mvp.md#54-workers環境でのgoogle-sheets-api実装)
 
-### 4. データ整合性
+### 4. データ整合性（D1 saga パターン）
 
-アクティベート処理は以下の順序を厳守：
+DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクションが使えないため、アクティベート処理は補償処理ベースで実装：
 
-1. DB トランザクション開始
-2. participants/sessions レコード作成
-3. **コミット前に**スプシ書き戻し
-4. スプシ成功 → DBコミット / スプシ失敗 → DBロールバック
+1. ID採番（`SELECT` で直近IDを取得 → 計算）
+2. event_id を get-or-create
+3. **`db.batch([...])` で原子的に**: `INSERT participants` + `INSERT sessions`
+4. スプシ書き戻し
+5. **失敗時の補償**: `db.batch([...])` で `DELETE sessions` → `DELETE participants` を実行
+6. PK衝突時はステップ1からリトライ（最大3回）
 
-これによりDB-スプシ間の不整合を防ぎます。
+詳細: [`docs/mvp.md` 6.1節](./docs/mvp.md#61-認証なしチェックインipad用) の `/checkin/activate` 処理順
 
 ### 5. 個人情報の取り扱い
 
@@ -139,7 +141,7 @@ APIサーバ（`apps/api`）は Cloudflare Workers で動作します。以下�
 
 ### 6. タイムゾーン
 
-- DBはUTCで保存（PostgreSQLの `timestamp with time zone`）
+- DBはUTCで保存（D1/SQLite では `integer({ mode: 'timestamp_ms' })` = Unix epoch ms）
 - 「今日」を判定する場合は明示的にJST変換: `Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' })`
 - フロント表示時は `Asia/Tokyo` で表示
 
@@ -151,7 +153,7 @@ APIサーバ（`apps/api`）は Cloudflare Workers で動作します。以下�
 - ❌ サービスアカウントJSON鍵
 - ❌ OAuth Client Secret
 - ❌ Better Auth Secret
-- ❌ Neon接続文字列
+- ❌ D1 database_id（`wrangler.toml` にコミットされる場合は public でも閲覧可能だが、念のため。本番デプロイ用は別管理推奨）
 - ❌ 学生側スプシのID（公開しても直接アクセスはできないが念のため秘匿）
 - ❌ 実在する子ども・保護者・メンターの個人情報（テストデータも含めない）
 - ❌ 本番ドメイン名
@@ -192,11 +194,13 @@ pnpm biome check --write .
 # 型チェック
 pnpm type-check
 
-# DB マイグレーション生成
+# DB マイグレーション生成（drizzle-kit が SQL を packages/db/drizzle/ に出力）
 pnpm --filter @tecnova/db db:generate
 
-# DB マイグレーション適用
-pnpm --filter @tecnova/db db:migrate
+# DB マイグレーション適用（ローカル D1 / 本番 D1）
+cd apps/api
+npx wrangler d1 migrations apply tecnova-db --local
+npx wrangler d1 migrations apply tecnova-db --remote
 
 # Cloudflare Workers デプロイ
 pnpm --filter @tecnova/api deploy
