@@ -1,0 +1,15 @@
+name = "tecnova-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+
+# D1 マイグレーションは packages/db で drizzle-kit が生成する。
+# wrangler は migrations_dir を見て --local / --remote にマイグレーションを適用する。
+[[d1_databases]]
+binding = "DB"
+database_name = "tecnova-db"
+# 本番 D1 を初めて作成するときは:
+#   pnpm --filter @tecnova/api exec wrangler login
+#   pnpm --filter @tecnova/api exec wrangler d1 create tecnova-db
+# 出力された database_id で下記プレースホルダを置き換える。
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/db/drizzle"

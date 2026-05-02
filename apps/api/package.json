@@ -1,0 +1,23 @@
+{
+  "name": "@tecnova/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit",
+    "db:apply:local": "wrangler d1 migrations apply tecnova-db --local",
+    "db:apply:remote": "wrangler d1 migrations apply tecnova-db --remote"
+  },
+  "dependencies": {
+    "@tecnova/db": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.16"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260502.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.87.0"
+  }
+}
