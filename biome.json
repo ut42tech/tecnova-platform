@@ -14,7 +14,8 @@
       "!**/.turbo",
       "!**/dist",
       "!**/.wrangler",
-      "!**/.claude"
+      "!**/.claude",
+      "!packages/db/drizzle"
     ]
   },
   "formatter": {
