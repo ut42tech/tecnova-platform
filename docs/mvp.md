@@ -2,7 +2,7 @@
 
 | 項目                   | 内容                                                                     |
 | ---------------------- | ------------------------------------------------------------------------ |
-| ドキュメントバージョン | v1.1                                                                     |
+| ドキュメントバージョン | v1.2                                                                     |
 | 想定運用開始           | 2026年5月中旬                                                            |
 | 関連ドキュメント       | [`requirements.md`](./requirements.md)（全体構想・将来構想を含む完全版） |
 
@@ -264,149 +264,47 @@ Google Cloud Consoleで：
 3. サービスアカウント作成
 4. JSON鍵をダウンロード
 5. 鍵の `client_email` を学生側スプシに「編集者」として共有
-6. Cloudflare WorkersのSecretsに `GOOGLE_SERVICE_ACCOUNT_KEY` を登録（JSON文字列）
+6. **JSON鍵を base64 エンコード**して Cloudflare Workers の Secrets に `GOOGLE_SERVICE_ACCOUNT_KEY` として登録：
+
+   ```bash
+   # 本番（Cloudflare 上の Secret）
+   base64 -i ~/path/to/service-account.json | tr -d '\n' | pbcopy
+   pnpm --filter @tecnova/api exec wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY
+   # プロンプトで cmd+v でペースト
+
+   # ローカル開発（apps/api/.dev.vars）
+   echo "GOOGLE_SERVICE_ACCOUNT_KEY=$(base64 -i ~/path/to/service-account.json | tr -d '\n')" > apps/api/.dev.vars
+   ```
+
+7. **学生側スプシID も Secret として登録**（`GOOGLE_SHEETS_ID`）。Public リポジトリへの露出を避けるため `wrangler.toml` の `[vars]` ではなく Secret 扱い。
+
+   ```bash
+   pnpm --filter @tecnova/api exec wrangler secret put GOOGLE_SHEETS_ID
+   echo 'GOOGLE_SHEETS_ID=1AbCdEf...' >> apps/api/.dev.vars
+   ```
+
+**なぜ base64 なのか**: 生 JSON を `.dev.vars` に書くと、dotenv パーサが `private_key` 内の `\n` エスケープを実改行に変換してしまい、Worker 側で `JSON.parse` が「Bad control character」で失敗する。base64 でラップしておけば dotenv は手を加えず、コード側で `atob` → `JSON.parse` の順に処理できる。
 
 ### 5.4 Workers環境でのGoogle Sheets API実装
 
-`googleapis` パッケージはNode.js依存のためWorkersで動かない。**Web Crypto APIで自前JWT生成 + fetch直叩き**で対応する。`packages/shared/src/google-sheets.ts` に実装。
+`googleapis` パッケージはNode.js依存のためWorkersで動かない。**Web Crypto APIで自前JWT生成 + fetch直叩き**で対応する。実装は `packages/shared/src/google-sheets.ts` を参照。
 
-```typescript
-// packages/shared/src/google-sheets.ts
+公開している関数:
 
-interface ServiceAccountKey {
-  client_email: string;
-  private_key: string;
-}
+| 関数                                                       | 用途                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| `getCachedAccessToken(encodedKey)`                         | サービスアカウントJWTでアクセストークンを取得（1時間キャッシュ） |
+| `fetchSheetRows(encodedKey, spreadsheetId, range)`         | 指定レンジを2次元配列で読む                                      |
+| `updateSheetRow(encodedKey, spreadsheetId, range, values)` | `valueInputOption=USER_ENTERED` で書き込み                       |
 
-function pemToArrayBuffer(pem: string): ArrayBuffer {
-  const pemContents = pem
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\s/g, "");
-  const binary = atob(pemContents);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
+**重要な設計判断**:
 
-function base64UrlEncode(input: string | ArrayBuffer): string {
-  let str: string;
-  if (typeof input === "string") {
-    str = btoa(input);
-  } else {
-    str = btoa(String.fromCharCode(...new Uint8Array(input)));
-  }
-  return str.replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
+- 第1引数は **base64 エンコード済みのサービスアカウントJSON文字列**を受け取る。コード内で `atob` → `JSON.parse` の順にデコードする。`.dev.vars` の dotenv パーサが `\n` を実改行に変換して `JSON.parse` が壊れる問題を回避するため
+- アクセストークンはモジュールスコープでキャッシュ（`expiresAt > now + 60s` の条件で再利用）。Workers インスタンスがリサイクルされたら自然に再生成される
+- 鍵の PEM ヘッダー除去 → `crypto.subtle.importKey('pkcs8', ...)` → RS256 署名 → JWT 組み立て、の順
+- エラー時は HTTP ステータス + 本文を含む例外を投げる（呼び出し側で saga の補償処理を判断するため）
 
-export async function getAccessToken(
-  serviceAccountJson: string,
-): Promise<string> {
-  const key: ServiceAccountKey = JSON.parse(serviceAccountJson);
-
-  const header = { alg: "RS256", typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
-  const claim = {
-    iss: key.client_email,
-    scope: "https://www.googleapis.com/auth/spreadsheets",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  };
-
-  const headerB64 = base64UrlEncode(JSON.stringify(header));
-  const claimB64 = base64UrlEncode(JSON.stringify(claim));
-  const signInput = `${headerB64}.${claimB64}`;
-
-  const privateKey = await crypto.subtle.importKey(
-    "pkcs8",
-    pemToArrayBuffer(key.private_key),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    privateKey,
-    new TextEncoder().encode(signInput),
-  );
-
-  const sigB64 = base64UrlEncode(signature);
-  const jwt = `${signInput}.${sigB64}`;
-
-  const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-
-  if (!tokenResp.ok) {
-    throw new Error(`Token request failed: ${tokenResp.status}`);
-  }
-
-  const { access_token } = (await tokenResp.json()) as { access_token: string };
-  return access_token;
-}
-
-// アクセストークンキャッシュ（モジュールスコープ・有効期限管理）
-let cachedToken: { value: string; expiresAt: number } | null = null;
-
-export async function getCachedAccessToken(
-  serviceAccountJson: string,
-): Promise<string> {
-  const now = Date.now();
-  if (cachedToken && cachedToken.expiresAt > now + 60_000) {
-    return cachedToken.value;
-  }
-  const token = await getAccessToken(serviceAccountJson);
-  cachedToken = { value: token, expiresAt: now + 3600_000 };
-  return token;
-}
-```
-
-その上に Sheets API 操作関数を実装：
-
-```typescript
-export async function fetchSheetRows(
-  serviceAccountJson: string,
-  spreadsheetId: string,
-  range: string,
-): Promise<string[][]> {
-  const token = await getCachedAccessToken(serviceAccountJson);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!resp.ok) throw new Error(`Sheets fetch failed: ${resp.status}`);
-  const data = (await resp.json()) as { values?: string[][] };
-  return data.values ?? [];
-}
-
-export async function updateSheetRow(
-  serviceAccountJson: string,
-  spreadsheetId: string,
-  range: string,
-  values: string[][],
-): Promise<void> {
-  const token = await getCachedAccessToken(serviceAccountJson);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-  const resp = await fetch(url, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ values }),
-  });
-  if (!resp.ok) throw new Error(`Sheets update failed: ${resp.status}`);
-}
-```
-
-**初週でPoCを完了させること。** これがハマると全体が止まる。
+**初週でPoCを完了させること。** これがハマると全体が止まる。動作確認は `apps/api` の `/sheets/health` エンドポイント（参加者シートの行数を返す）で行える。
 
 ---
 
@@ -822,11 +720,11 @@ database_id = "<d1-database-id>"
 migrations_dir = "../../packages/db/drizzle"
 
 [vars]
-GOOGLE_SHEETS_ID = "<spreadsheet-id>"   # 公開可なIDなのでvarsでよい
 BETTER_AUTH_URL = "https://api.example.workers.dev"
 
 # 以下はSecretsで設定（wrangler secret put）
-# GOOGLE_SERVICE_ACCOUNT_KEY
+# GOOGLE_SERVICE_ACCOUNT_KEY     ← base64 エンコード済みのサービスアカウントJSON
+# GOOGLE_SHEETS_ID               ← 学生側スプシID（Public リポジトリへの露出を避けるため Secret 扱い）
 # GOOGLE_OAUTH_CLIENT_ID
 # GOOGLE_OAUTH_CLIENT_SECRET
 # BETTER_AUTH_SECRET
