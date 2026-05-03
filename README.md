@@ -51,10 +51,10 @@
                 ┌────────────┼─────────────┐
                 ▼            ▼             ▼
         ┌──────────┐  ┌──────────┐  ┌────────────┐
-        │ Neon     │  │ Google   │  │ Better     │
-        │ Postgres │  │ Sheets   │  │ Auth       │
-        │ via      │  │ API      │  │ (Google    │
-        │Hyperdrive│  │          │  │  OAuth)    │
+        │Cloudflare│  │ Google   │  │ Better     │
+        │   D1     │  │ Sheets   │  │ Auth       │
+        │ (SQLite) │  │ API      │  │ (Google    │
+        │          │  │          │  │  OAuth)    │
         └──────────┘  └──────────┘  └────────────┘
 ```
 
@@ -66,9 +66,8 @@
 
 - **[Hono](https://hono.dev/)** — Ultrafast web framework for the edge
 - **[Cloudflare Workers](https://workers.cloudflare.com/)** — Edge runtime
-- **[Cloudflare Hyperdrive](https://developers.cloudflare.com/hyperdrive/)** — Connection pooling & caching for Postgres
-- **[Neon](https://neon.tech/)** — Serverless PostgreSQL with branching
-- **[Drizzle ORM](https://orm.drizzle.team/)** — TypeScript-first ORM
+- **[Cloudflare D1](https://developers.cloudflare.com/d1/)** — Workers-native SQLite database
+- **[Drizzle ORM](https://orm.drizzle.team/)** — TypeScript-first ORM (with `drizzle-orm/d1`)
 - **[Better Auth](https://www.better-auth.com/)** — Framework-agnostic authentication
 
 ### Frontend
@@ -131,9 +130,8 @@ tecnova-platform/
 
 - Node.js 20+
 - pnpm 9+
-- Cloudflareアカウント（Workers + Hyperdrive）
+- Cloudflareアカウント（Workers + D1）
 - Vercelアカウント
-- Neonアカウント
 - Google Cloud Platformアカウント（Sheets API + OAuth）
 
 ### Setup
@@ -148,10 +146,13 @@ pnpm install
 
 # Copy env example
 cp .env.example .env.local
-# .env.local に必要な値を設定
+# .env.local に必要な値を設定（apps/api は別途 .dev.vars が必要）
 
-# Run database migrations
-pnpm --filter @tecnova/db db:migrate
+# Generate D1 migrations from Drizzle schema
+pnpm --filter @tecnova/db db:generate
+
+# Apply migrations to the local D1 (Miniflare)
+pnpm --filter @tecnova/api exec wrangler d1 migrations apply tecnova-db --local
 
 # Run development servers
 pnpm dev
