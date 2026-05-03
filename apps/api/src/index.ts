@@ -1,5 +1,5 @@
 import * as schema from '@tecnova/db';
-import { participants } from '@tecnova/db';
+import { mentors, participants } from '@tecnova/db';
 import { fetchSheetRows } from '@tecnova/shared/google-sheets';
 import {
   activateRequestSchema,
@@ -7,11 +7,12 @@ import {
   checkOutRequestSchema,
   scanRequestSchema,
 } from '@tecnova/shared/schemas';
-import { count } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { createAuth } from './lib/auth';
 import {
   activatePreRegistered,
   CheckinError,
@@ -26,13 +27,109 @@ type Bindings = {
   DB: D1Database;
   GOOGLE_SERVICE_ACCOUNT_KEY: string;
   GOOGLE_SHEETS_ID: string;
+  GOOGLE_OAUTH_CLIENT_ID: string;
+  GOOGLE_OAUTH_CLIENT_SECRET: string;
+  BETTER_AUTH_SECRET: string;
+  BETTER_AUTH_URL: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+interface AuthMentor {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'mentor';
+}
+
+type Variables = {
+  user: AuthUser;
+  mentor: AuthMentor;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // /checkin/* は iPad アプリから認証なしで呼ぶため、CORS は許可しておく。
 // 書き込みは sessions/participants の限定操作のみで、設計上の権限境界は保たれる。
 app.use('/checkin/*', cors());
+
+// /api/* は管理画面からの呼び出し。Better Auth がセッションクッキーを発行するので
+// CORS は credentials を許可した上で trustedOrigins と整合させる。
+app.use(
+  '/api/*',
+  cors({
+    // 開発時は admin の Next.js を localhost:3001 で動かす想定
+    origin: ['http://localhost:3001'],
+    credentials: true,
+    allowHeaders: ['Content-Type'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  }),
+);
+
+// Better Auth のエンドポイント群（/api/auth/sign-in/* /api/auth/callback/*
+// /api/auth/session など）。リクエスト毎に instance を生成して使い切る。
+app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
+  const auth = createAuth(c.env);
+  return auth.handler(c.req.raw);
+});
+
+// /api/auth/* 以外の /api/* は認証必須。
+// セッション取得 → mentors テーブル突合 で2段判定する。
+// signIn 時の許可リスト判定は OAuth コールバック側で同じ突合を行う想定だが、
+// このミドルウェアでも毎リクエスト確認することで、後から `active=false` に
+// された mentor が古いセッションで API を叩き続けるのを防ぐ。
+app.use('/api/*', async (c, next) => {
+  if (c.req.path.startsWith('/api/auth/')) return next();
+
+  const auth = createAuth(c.env);
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) {
+    return c.json({ error: 'UNAUTHORIZED', message: 'session required' }, 401);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  const [mentor] = await db
+    .select({
+      id: mentors.id,
+      email: mentors.email,
+      name: mentors.name,
+      role: mentors.role,
+      active: mentors.active,
+    })
+    .from(mentors)
+    .where(and(eq(mentors.email, session.user.email), eq(mentors.active, true)))
+    .limit(1);
+
+  if (!mentor) {
+    return c.json({ error: 'FORBIDDEN', message: 'email not in mentor allowlist' }, 403);
+  }
+
+  c.set('user', {
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+  });
+  c.set('mentor', {
+    id: mentor.id,
+    email: mentor.email,
+    name: mentor.name,
+    role: mentor.role,
+  });
+  await next();
+});
+
+// 認証確認用：ログイン中の user / mentor 情報を返す。管理画面のフロントが
+// セッション復元の確認や上部のユーザー名表示に使う。
+app.get('/api/me', (c) => {
+  return c.json({
+    user: c.get('user'),
+    mentor: c.get('mentor'),
+  });
+});
 
 const checkinErrorStatus: Record<CheckinErrorCode, ContentfulStatusCode> = {
   NOT_FOUND: 404,
