@@ -5,6 +5,7 @@ import {
   activateRequestSchema,
   checkInRequestSchema,
   checkOutRequestSchema,
+  participantsListQuerySchema,
   scanRequestSchema,
 } from '@tecnova/shared/schemas';
 import { and, count, eq } from 'drizzle-orm';
@@ -12,6 +13,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { fetchParticipantsList, fetchTodaySessions } from './lib/admin';
 import { createAuth, parseTrustedOrigins } from './lib/auth';
 import {
   activatePreRegistered,
@@ -133,6 +135,38 @@ app.get('/api/me', (c) => {
     user: c.get('user'),
     mentor: c.get('mentor'),
   });
+});
+
+// 当日（JST）の来場者一覧。dashboard 用。
+// 当日の event がまだ無ければ event=null と空配列を返す。
+app.get('/api/sessions/today', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  try {
+    const result = await fetchTodaySessions(db);
+    return c.json(result);
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 参加者一覧。ページネーション + ニックネーム部分一致検索。
+app.get('/api/participants', async (c) => {
+  const parsed = participantsListQuerySchema.safeParse({
+    page: c.req.query('page'),
+    limit: c.req.query('limit'),
+    search: c.req.query('search'),
+  });
+  if (!parsed.success) {
+    return c.json({ error: 'INTERNAL', message: 'invalid query parameters' }, 400);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  try {
+    const result = await fetchParticipantsList(db, parsed.data);
+    return c.json(result);
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
 });
 
 const checkinErrorStatus: Record<CheckinErrorCode, ContentfulStatusCode> = {
