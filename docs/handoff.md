@@ -1,4 +1,4 @@
-# セッション引き継ぎノート（2026-05-03時点）
+# セッション引き継ぎノート（2026-05-04時点）
 
 新しい Claude セッションがこのリポジトリで作業を再開するときの起点。
 このファイルは「今ここまで来ている」を素早く把握するためのもの。詳細仕様は引き続き
@@ -25,6 +25,8 @@
 | W2 Day 11 | Better Auth 基盤（schema + `/api/auth/*` + middleware） | #8 |
 | W2 Day 11 | `apps/admin` ログイン画面 + Better Auth client | #9 |
 | - | Bug fix: ログイン後に admin オリジンへ戻すよう callbackURL を絶対URL化 | #10 |
+| - | API CORS/trustedOrigins を env 経由で設定可能化（本番デプロイ準備） | direct commit `9ad8603` |
+| W2 Day 10 | `/api/sessions/today` + `/api/participants` 参照系API | #11 |
 
 **Day 10 と Day 11 を意図的に入れ替えた**（Day 11 = Better Auth を先に）。理由は Day 10 の
 `/api/*` 系エンドポイントが認証必須で、後から auth を retrofit するより auth 基盤を先に
@@ -48,6 +50,7 @@
     `/checkin/sessions/check-in`, `/checkin/sessions/check-out`, `/checkin/scan`
   - `/api/auth/*`（Better Auth）
   - `/api/me`（middleware 動作確認用）
+  - `/api/sessions/today`, `/api/participants`（管理画面用、auth-protected）
 
 ### 本番側でできていること
 
@@ -60,34 +63,36 @@
   - `GOOGLE_OAUTH_CLIENT_ID`
   - `GOOGLE_OAUTH_CLIENT_SECRET`
 - mentors テーブルに `ut42.nu@gmail.com` (`たくや`, role=admin) 投入済み（local + remote）
-- Worker 本体は **まだ `wrangler deploy` していない**（ローカル動作確認のみ）
-- Vercel デプロイは **未着手**
+- **Worker / admin / checkin はすでに本番デプロイ済みで、OAuth ログインまで含めて動作確認済み**
+  （本番URLは memory `project_production_urls.md` 参照）
+- 本番反映済みコードのカットオフは PR #11 (commit `efc2075`)。以降の PR は次回デプロイ対象
 
 ---
 
 ## 次に取り掛かるフェーズ
 
-**W2 Day 10：管理画面コンテンツ**
+**W2 Day 10：管理画面コンテンツ（残り 3 サブ PR）**
 
 仕様: `docs/mvp.md` 6.2（API） + 7.2（画面）。
 
-### バックエンド側エンドポイント（auth-protected で `/api/*` 配下に追加）
+PR #11 で 1 つ目（参照系 API）は完了済み。残作業：
+
+### サブ PR 2: `/api/mentors` CRUD（admin role guard 付き）
 
 | メソッド・パス | 用途 |
 | --- | --- |
-| `GET /api/sessions/today` | 当日の来場者一覧（dashboard 用） |
-| `GET /api/participants` | 参加者一覧（ページネーション、検索） |
 | `GET /api/mentors` | メンター一覧（admin role のみ） |
 | `POST /api/mentors` | メンター追加（admin role のみ） |
 | `PATCH /api/mentors/:id` | メンター編集（admin role のみ） |
 
 middleware は既に `c.get('user')` / `c.get('mentor')` を提供済み（`apps/api/src/index.ts`）。
-admin 専用ルートは middleware で `c.get('mentor').role !== 'admin'` を弾くか、
-ハンドラ先頭で同じチェックを入れる。
+admin 専用ルートは `c.get('mentor').role !== 'admin'` を弾くチェックをハンドラ先頭または
+専用 sub-middleware で入れる。Zod スキーマは `packages/shared/src/schemas/admin.ts` に追加。
 
-### 管理画面 UI
+### サブ PR 3: 管理画面ダッシュボード（フロント）
 
-`apps/admin/src/app/page.tsx` のダッシュボードプレースホルダを置き換え：
+`apps/admin/src/app/page.tsx` のダッシュボードプレースホルダを `/api/sessions/today` の
+レスポンスで置き換え：
 
 - ヘッダー: ログインユーザー名 + ログアウト（既存）
 - カード: 現在の来場者数 / 今日の総チェックイン / チェックアウト済
@@ -95,16 +100,15 @@ admin 専用ルートは middleware で `c.get('mentor').role !== 'admin'` を�
   チェックアウト時刻 / 状態
 - ナビゲーション: ダッシュボード / 参加者一覧 / メンター管理（admin のみ）
 
+実装メモ：admin app 側の fetch は `credentials: 'include'` 必須（既存の authClient と同じ理由）。
+時刻はサーバから UTC ISO で返るので、フロントで `Asia/Tokyo` の `Intl.DateTimeFormat` で表示。
+
+### サブ PR 4: 参加者一覧 + メンター管理画面（フロント）
+
+`/api/participants` と `/api/mentors` を叩く画面。検索ボックス（debounce）+ ページネーション。
+メンター管理は admin role のみナビに表示。
+
 **ユーザーの方針**：「フロントの UI/UX 調整は最後」。最初は機能が動けばよい程度の見た目で。
-
-### 推奨 PR 分割
-
-実装が大きくなる場合は分けやすいように：
-
-1. `feat: add /api/sessions/today and /api/participants endpoints`（参照系API + 必要なZodスキーマ）
-2. `feat: add /api/mentors CRUD endpoints with admin guard`（admin role チェック付き）
-3. `feat: implement admin dashboard with today's sessions`（フロント・dashboard）
-4. `feat: implement participant list and mentor management screens`（フロント・残りの画面）
 
 ---
 
@@ -165,11 +169,12 @@ admin 専用ルートは middleware で `c.get('mentor').role !== 'admin'` を�
 
 ## まだやっていない・残作業（順不同）
 
-- **本番デプロイ**：`wrangler deploy` も Vercel 接続もまだ
+- **W2 Day 10 残り 3 サブ PR**：上記参照
 - **Day 9 (PWA 化・iPad 実機テスト)**：UI/UX 調整なので最後で OK
 - **QR スキャナ**：今は手入力。zxing 等を使ったカメラ実装は将来別 PR
 - **Phase 1.5 系**：メンタースマホアプリ、活動ログ、CSVエクスポート等
-- **`docs/mvp.md` 9.1 の Day 12-14**：E2E テスト、リハーサル、本番リリース
+- **`docs/mvp.md` 9.1 の Day 12-14**：E2E テスト、リハーサル、本番リリース仕上げ
+  （初回本番デプロイは済んだが、リリース時の運用手順整備は未着手）
 
 ---
 
@@ -184,7 +189,11 @@ GOOGLE_OAUTH_CLIENT_ID=<google oauth client id>
 GOOGLE_OAUTH_CLIENT_SECRET=<secret>
 BETTER_AUTH_SECRET=<openssl rand -hex 32 で生成>
 BETTER_AUTH_URL=http://localhost:8787
+TRUSTED_ORIGINS=http://localhost:3001
 ```
+
+`TRUSTED_ORIGINS` はカンマ区切り。`/api/*` の CORS と Better Auth の trustedOrigins
+の両方で使われる。本番では admin の Vercel URL を Worker secret に登録済み。
 
 サービスアカウント JSON 鍵の保管場所：`~/Downloads/tecnova-platform-768dee139b95.json`
 （前セッションで指定）。
