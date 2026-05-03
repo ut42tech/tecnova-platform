@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./google-sheets": "./src/google-sheets.ts"
+    "./google-sheets": "./src/google-sheets.ts",
+    "./schemas": "./src/schemas/index.ts"
   },
   "scripts": {
     "type-check": "tsc --noEmit"
@@ -13,5 +14,8 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260502.1",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "zod": "^4.4.2"
   }
 }

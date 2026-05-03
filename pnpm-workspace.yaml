@@ -1,3 +1,9 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Next.js / Tailwind 経由で入る sharp と unrs-resolver の install スクリプトは抑止する。
+# create-next-app が apps/checkin/pnpm-workspace.yaml に書いていた設定をルートに集約。
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
