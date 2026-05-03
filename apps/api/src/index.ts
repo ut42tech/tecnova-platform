@@ -12,7 +12,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { createAuth } from './lib/auth';
+import { createAuth, parseTrustedOrigins } from './lib/auth';
 import {
   activatePreRegistered,
   CheckinError,
@@ -31,6 +31,7 @@ type Bindings = {
   GOOGLE_OAUTH_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  TRUSTED_ORIGINS: string;
 };
 
 interface AuthUser {
@@ -59,11 +60,14 @@ app.use('/checkin/*', cors());
 
 // /api/* は管理画面からの呼び出し。Better Auth がセッションクッキーを発行するので
 // CORS は credentials を許可した上で trustedOrigins と整合させる。
+// 許可オリジンは `TRUSTED_ORIGINS`（カンマ区切り）から動的に解決する。
 app.use(
   '/api/*',
   cors({
-    // 開発時は admin の Next.js を localhost:3001 で動かす想定
-    origin: ['http://localhost:3001'],
+    origin: (origin, c) => {
+      const allowed = parseTrustedOrigins(c.env.TRUSTED_ORIGINS);
+      return allowed.includes(origin) ? origin : null;
+    },
     credentials: true,
     allowHeaders: ['Content-Type'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],

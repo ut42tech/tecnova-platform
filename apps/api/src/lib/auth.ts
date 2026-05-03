@@ -9,7 +9,16 @@ interface Env {
   GOOGLE_OAUTH_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
+  TRUSTED_ORIGINS: string;
 }
+
+// `TRUSTED_ORIGINS` はカンマ区切りの文字列。Worker Secrets / `.dev.vars` で設定する。
+// 本番ドメインはコミットしないため、コード側にデフォルト値は持たない。
+export const parseTrustedOrigins = (raw: string | undefined): string[] =>
+  (raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 // Cloudflare Workers では betterAuth instance をグローバルに保持しない
 // （D1 接続まわりでロックを掴んだままのリクエストが残るとハングするため）。
@@ -40,8 +49,8 @@ export const createAuth = (env: Env) => {
       },
     },
     // 管理画面（apps/admin）からの cross-origin リクエストを許可する。
-    // 本番ドメインは後で env 経由に置き換える想定。
-    trustedOrigins: ['http://localhost:3001'],
+    // 開発時の `http://localhost:3001` も `TRUSTED_ORIGINS` に含めること。
+    trustedOrigins: parseTrustedOrigins(env.TRUSTED_ORIGINS),
   });
 };
 
