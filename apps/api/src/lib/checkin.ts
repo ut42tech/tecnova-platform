@@ -1,7 +1,7 @@
 import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
-import { desc, eq, like } from 'drizzle-orm';
+import { and, desc, eq, isNull, like } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -100,9 +100,17 @@ const formatActivatedAtForSheet = (date: Date): string => {
   return fmt.format(date).replace(', ', ' ');
 };
 
+export type CheckinErrorCode =
+  | 'NOT_FOUND'
+  | 'ALREADY_ACTIVATED'
+  | 'ALREADY_CHECKED_IN'
+  | 'NOT_CHECKED_IN'
+  | 'INVALID_SCAN_VALUE'
+  | 'SHEETS_WRITE_FAILED';
+
 export class CheckinError extends Error {
   constructor(
-    public readonly code: 'NOT_FOUND' | 'ALREADY_ACTIVATED' | 'SHEETS_WRITE_FAILED',
+    public readonly code: CheckinErrorCode,
     message: string,
   ) {
     super(message);
@@ -193,4 +201,145 @@ export const activatePreRegistered = async ({
     grade: target.grade,
     checkedInAt,
   };
+};
+
+// ---- 通常チェックイン / チェックアウト / スキャン ----
+
+interface ActiveParticipant {
+  id: string;
+  nickname: string;
+}
+
+const requireActiveParticipant = async (
+  db: Db,
+  participantId: string,
+): Promise<ActiveParticipant> => {
+  const [row] = await db
+    .select({
+      id: participants.id,
+      nickname: participants.nickname,
+      active: participants.active,
+    })
+    .from(participants)
+    .where(eq(participants.id, participantId))
+    .limit(1);
+  if (!row?.active) {
+    throw new CheckinError('NOT_FOUND', `participant ${participantId} not found or inactive`);
+  }
+  return { id: row.id, nickname: row.nickname };
+};
+
+const findActiveSessionToday = async (
+  db: Db,
+  participantId: string,
+  eventId: string,
+): Promise<{ id: string; checkedInAt: Date } | null> => {
+  const [row] = await db
+    .select({ id: sessions.id, checkedInAt: sessions.checkedInAt })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.participantId, participantId),
+        eq(sessions.eventId, eventId),
+        isNull(sessions.checkedOutAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+export interface CheckInResult {
+  sessionId: string;
+  nickname: string;
+  checkedInAt: Date;
+}
+
+export const recordCheckIn = async (db: Db, participantId: string): Promise<CheckInResult> => {
+  const participant = await requireActiveParticipant(db, participantId);
+  const eventId = await getOrCreateTodayEvent(db);
+
+  const existing = await findActiveSessionToday(db, participantId, eventId);
+  if (existing) {
+    throw new CheckinError(
+      'ALREADY_CHECKED_IN',
+      `participant ${participantId} is already checked in`,
+    );
+  }
+
+  const checkedInAt = new Date();
+  const [inserted] = await db
+    .insert(sessions)
+    .values({ participantId, eventId, checkedInAt })
+    .returning({ id: sessions.id });
+
+  if (!inserted) {
+    throw new Error('failed to insert session');
+  }
+  return {
+    sessionId: inserted.id,
+    nickname: participant.nickname,
+    checkedInAt,
+  };
+};
+
+export interface CheckOutResult {
+  nickname: string;
+  checkedInAt: Date;
+  checkedOutAt: Date;
+  stayDurationMinutes: number;
+}
+
+export const recordCheckOut = async (db: Db, participantId: string): Promise<CheckOutResult> => {
+  const participant = await requireActiveParticipant(db, participantId);
+  const eventId = await getOrCreateTodayEvent(db);
+
+  const open = await findActiveSessionToday(db, participantId, eventId);
+  if (!open) {
+    throw new CheckinError('NOT_CHECKED_IN', `participant ${participantId} has no active session`);
+  }
+
+  const checkedOutAt = new Date();
+  await db.update(sessions).set({ checkedOutAt }).where(eq(sessions.id, open.id));
+
+  return {
+    nickname: participant.nickname,
+    checkedInAt: open.checkedInAt,
+    checkedOutAt,
+    stayDurationMinutes: Math.floor((checkedOutAt.getTime() - open.checkedInAt.getTime()) / 60_000),
+  };
+};
+
+// /checkin/scan の動作: スキャン値を participants.id として参照し、当日の
+// 状態に応じて check-in / check-out のどちらかにルーティングする。
+export type ScanResult =
+  | { action: 'check_in'; sessionId: string; nickname: string; checkedInAt: Date }
+  | {
+      action: 'check_out';
+      nickname: string;
+      checkedInAt: Date;
+      checkedOutAt: Date;
+      stayDurationMinutes: number;
+    };
+
+export const processScanValue = async (db: Db, scanValue: string): Promise<ScanResult> => {
+  if (!/^\d{5}$/.test(scanValue)) {
+    throw new CheckinError(
+      'INVALID_SCAN_VALUE',
+      `scan value '${scanValue}' is not a valid 5-digit participant id`,
+    );
+  }
+
+  // 状態判定のため当日 event_id を先に取得。requireActiveParticipant も
+  // recordCheckIn/recordCheckOut の中で呼ばれるが、ここで先に NOT_FOUND を
+  // 投げると分岐前に短絡できる。
+  await requireActiveParticipant(db, scanValue);
+  const eventId = await getOrCreateTodayEvent(db);
+  const open = await findActiveSessionToday(db, scanValue, eventId);
+
+  if (open) {
+    const result = await recordCheckOut(db, scanValue);
+    return { action: 'check_out', ...result };
+  }
+  const result = await recordCheckIn(db, scanValue);
+  return { action: 'check_in', ...result };
 };

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// 内製ID（5桁・年度2桁+連番、例: '26001'）
+const participantIdSchema = z.string().regex(/^\d{5}$/);
+
 // `/checkin/pre-registered` のレスポンス
 export const preRegisteredParticipantSchema = z.object({
   preRegistrationId: z.string(),
@@ -24,9 +27,61 @@ export const activateResponseSchema = z.object({
   checkedInAt: z.string(), // ISO 8601
 });
 
+// `/checkin/sessions/check-in` のリクエスト/レスポンス
+export const checkInRequestSchema = z.object({
+  participantId: participantIdSchema,
+});
+
+export const checkInResponseSchema = z.object({
+  sessionId: z.string(),
+  nickname: z.string(),
+  checkedInAt: z.string(), // ISO 8601
+});
+
+// `/checkin/sessions/check-out` のリクエスト/レスポンス
+export const checkOutRequestSchema = z.object({
+  participantId: participantIdSchema,
+});
+
+export const checkOutResponseSchema = z.object({
+  nickname: z.string(),
+  checkedInAt: z.string(),
+  checkedOutAt: z.string(),
+  stayDurationMinutes: z.number().int().nonnegative(),
+});
+
+// `/checkin/scan` のリクエスト/レスポンス（action で discriminated union）
+export const scanRequestSchema = z.object({
+  scanValue: z.string(),
+});
+
+export const scanResponseSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('check_in'),
+    sessionId: z.string(),
+    nickname: z.string(),
+    checkedInAt: z.string(),
+  }),
+  z.object({
+    action: z.literal('check_out'),
+    nickname: z.string(),
+    checkedInAt: z.string(),
+    checkedOutAt: z.string(),
+    stayDurationMinutes: z.number().int().nonnegative(),
+  }),
+]);
+
 // 共通エラーレスポンス
 export const errorResponseSchema = z.object({
-  error: z.enum(['NOT_FOUND', 'ALREADY_ACTIVATED', 'SHEETS_WRITE_FAILED', 'INTERNAL']),
+  error: z.enum([
+    'NOT_FOUND',
+    'ALREADY_ACTIVATED',
+    'ALREADY_CHECKED_IN',
+    'NOT_CHECKED_IN',
+    'INVALID_SCAN_VALUE',
+    'SHEETS_WRITE_FAILED',
+    'INTERNAL',
+  ]),
   message: z.string(),
 });
 
@@ -34,4 +89,10 @@ export type PreRegisteredParticipant = z.infer<typeof preRegisteredParticipantSc
 export type PreRegisteredListResponse = z.infer<typeof preRegisteredListResponseSchema>;
 export type ActivateRequest = z.infer<typeof activateRequestSchema>;
 export type ActivateResponse = z.infer<typeof activateResponseSchema>;
+export type CheckInRequest = z.infer<typeof checkInRequestSchema>;
+export type CheckInResponse = z.infer<typeof checkInResponseSchema>;
+export type CheckOutRequest = z.infer<typeof checkOutRequestSchema>;
+export type CheckOutResponse = z.infer<typeof checkOutResponseSchema>;
+export type ScanRequest = z.infer<typeof scanRequestSchema>;
+export type ScanResponse = z.infer<typeof scanResponseSchema>;
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;
