@@ -11,10 +11,17 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
+      // callbackURL は絶対URLで渡す。相対パスだと Better Auth は authClient の
+      // baseURL（= API オリジン）に対して解決してしまい、ログイン後に
+      // localhost:8787 に着地する。フロントのオリジンに戻したいので
+      // window.location.origin で組み立てる。
+      // trustedOrigins（apps/api/src/lib/auth.ts）に admin の origin が
+      // 入っていることが前提。
+      const redirect = `${window.location.origin}/`;
       await authClient.signIn.social({
         provider: 'google',
-        // 認証成功後に戻る場所
-        callbackURL: '/',
+        callbackURL: redirect,
+        errorCallbackURL: redirect,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
