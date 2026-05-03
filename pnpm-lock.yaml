@@ -18,6 +18,43 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  apps/admin:
+    dependencies:
+      '@tecnova/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      better-auth:
+        specifier: ^1.6.9
+        version: 1.6.9(@cloudflare/workers-types@4.20260502.1)(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260502.1)(kysely@0.28.17))(next@16.2.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      next:
+        specifier: 16.2.4
+        version: 16.2.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@tailwindcss/postcss':
+        specifier: ^4
+        version: 4.2.4
+      '@types/node':
+        specifier: ^20
+        version: 20.19.39
+      '@types/react':
+        specifier: ^19
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.2.3(@types/react@19.2.14)
+      tailwindcss:
+        specifier: ^4
+        version: 4.2.4
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   apps/api:
     dependencies:
       '@tecnova/db':
