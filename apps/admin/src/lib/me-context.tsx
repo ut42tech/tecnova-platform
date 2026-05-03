@@ -1,30 +1,42 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { authClient } from '@/lib/auth-client';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { apiFetch } from './api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
-
-interface MeResponse {
+export interface Me {
   user: { id: string; email: string; name: string };
   mentor: { id: string; email: string; name: string; role: 'admin' | 'mentor' };
 }
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'ok'; data: MeResponse }
+  | { kind: 'ok'; data: Me }
   | { kind: 'forbidden'; message: string }
   | { kind: 'error'; message: string };
 
-export default function Home() {
+const MeContext = createContext<Me | null>(null);
+
+export const useMe = (): Me => {
+  const me = useContext(MeContext);
+  if (!me) {
+    throw new Error('useMe must be used inside MeProvider');
+  }
+  return me;
+};
+
+interface Props {
+  children: React.ReactNode;
+}
+
+export function MeProvider({ children }: Props) {
   const router = useRouter();
   const [state, setState] = useState<State>({ kind: 'loading' });
 
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch(`${API_URL}/api/me`, { credentials: 'include' });
+        const r = await apiFetch('/api/me');
         if (r.status === 401) {
           router.replace('/login');
           return;
@@ -40,7 +52,7 @@ export default function Home() {
         if (!r.ok) {
           throw new Error(`HTTP ${r.status}`);
         }
-        const data = (await r.json()) as MeResponse;
+        const data = (await r.json()) as Me;
         setState({ kind: 'ok', data });
       } catch (e) {
         setState({
@@ -50,11 +62,6 @@ export default function Home() {
       }
     })();
   }, [router]);
-
-  const signOut = async () => {
-    await authClient.signOut();
-    router.replace('/login');
-  };
 
   if (state.kind === 'loading') {
     return (
@@ -68,9 +75,6 @@ export default function Home() {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
         <p className="text-lg text-red-600">{state.message}</p>
-        <button type="button" onClick={signOut} className="rounded-lg bg-zinc-200 px-4 py-2">
-          ログアウト
-        </button>
       </main>
     );
   }
@@ -83,30 +87,5 @@ export default function Home() {
     );
   }
 
-  const { user, mentor } = state.data;
-
-  return (
-    <main className="flex flex-1 flex-col gap-6 p-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">テクノバ管理画面</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-zinc-600">
-            {user.name} ({mentor.role})
-          </span>
-          <button
-            type="button"
-            onClick={signOut}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          >
-            ログアウト
-          </button>
-        </div>
-      </header>
-      <section className="rounded-lg border border-zinc-200 p-6">
-        <p className="text-zinc-600">
-          ダッシュボード本体は次のフェーズで実装します。今はログインの疎通確認のみです。
-        </p>
-      </section>
-    </main>
-  );
+  return <MeContext.Provider value={state.data}>{children}</MeContext.Provider>;
 }
