@@ -1,6 +1,8 @@
 name = "tecnova-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
+# Better Auth が AsyncLocalStorage を使うため nodejs_compat 必須
+compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
 binding = "DB"
