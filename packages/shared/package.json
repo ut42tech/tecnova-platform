@@ -1,0 +1,17 @@
+{
+  "name": "@tecnova/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./google-sheets": "./src/google-sheets.ts"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260502.1",
+    "typescript": "^6.0.3"
+  }
+}

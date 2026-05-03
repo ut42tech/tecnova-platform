@@ -116,9 +116,12 @@ APIサーバ（`apps/api`）は Cloudflare Workers で動作します。以下�
 
 - ✅ Web Crypto API で自前JWT生成 + fetch直叩き
 - ✅ アクセストークンは1時間有効、モジュールスコープでキャッシュ
+- ✅ サービスアカウント鍵は **base64 エンコード**してから Secrets / `.dev.vars` に格納（`GOOGLE_SERVICE_ACCOUNT_KEY`）
+- ✅ `GOOGLE_SHEETS_ID` も Secrets / `.dev.vars` で管理（学生側スプシIDの秘匿）
+- ❌ サービスアカウント鍵を生 JSON のまま `.dev.vars` に置かない（dotenv パーサが `\n` を実改行に変換し `JSON.parse` が失敗する）
 - ❌ `googleapis` パッケージは使わない
 
-実装サンプル: [`docs/mvp.md` 5.4節](./docs/mvp.md#54-workers環境でのgoogle-sheets-api実装)
+実装サンプル: [`docs/mvp.md` 5.4節](./docs/mvp.md#54-workers環境でのgoogle-sheets-api実装)、`packages/shared/src/google-sheets.ts`
 
 ### 4. データ整合性（D1 saga パターン）
 
