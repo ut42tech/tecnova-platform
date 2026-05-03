@@ -5,15 +5,26 @@ import {
   activateRequestSchema,
   checkInRequestSchema,
   checkOutRequestSchema,
+  createMentorRequestSchema,
   participantsListQuerySchema,
   scanRequestSchema,
+  updateMentorRequestSchema,
 } from '@tecnova/shared/schemas';
 import { and, count, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import type { MiddlewareHandler } from 'hono/types';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { fetchParticipantsList, fetchTodaySessions } from './lib/admin';
+import {
+  createMentor,
+  fetchMentorsList,
+  fetchParticipantsList,
+  fetchTodaySessions,
+  MentorError,
+  type MentorErrorCode,
+  updateMentor,
+} from './lib/admin';
 import { createAuth, parseTrustedOrigins } from './lib/auth';
 import {
   activatePreRegistered,
@@ -168,6 +179,79 @@ app.get('/api/participants', async (c) => {
     return c.json(internalError(e), 500);
   }
 });
+
+// admin role 専用エンドポイントのガード。/api/* の認証ミドルウェアで mentor を
+// 解決済みである前提で、role を弾く責務だけを持つ。
+const requireAdmin: MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> = async (
+  c,
+  next,
+) => {
+  const mentor = c.get('mentor');
+  if (mentor.role !== 'admin') {
+    return c.json({ error: 'FORBIDDEN', message: 'admin role required' }, 403);
+  }
+  await next();
+};
+
+app.use('/api/mentors', requireAdmin);
+app.use('/api/mentors/*', requireAdmin);
+
+// メンター一覧。createdAt 昇順（運営の登録順）。
+app.get('/api/mentors', async (c) => {
+  const db = drizzle(c.env.DB, { schema });
+  try {
+    const result = await fetchMentorsList(db);
+    return c.json(result);
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// メンター追加
+app.post('/api/mentors', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = createMentorRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  try {
+    const mentor = await createMentor(db, parsed.data);
+    return c.json(mentor, 201);
+  } catch (e) {
+    if (e instanceof MentorError) {
+      return c.json({ error: e.code, message: e.message }, mentorErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
+// メンター編集（部分更新）。email は変更不可、role と active は admin が切り替える。
+app.patch('/api/mentors/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => null);
+  const parsed = updateMentorRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+  }
+
+  const db = drizzle(c.env.DB, { schema });
+  try {
+    const mentor = await updateMentor(db, id, parsed.data);
+    return c.json(mentor);
+  } catch (e) {
+    if (e instanceof MentorError) {
+      return c.json({ error: e.code, message: e.message }, mentorErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
+const mentorErrorStatus: Record<MentorErrorCode, ContentfulStatusCode> = {
+  EMAIL_ALREADY_EXISTS: 409,
+  NOT_FOUND: 404,
+};
 
 const checkinErrorStatus: Record<CheckinErrorCode, ContentfulStatusCode> = {
   NOT_FOUND: 404,

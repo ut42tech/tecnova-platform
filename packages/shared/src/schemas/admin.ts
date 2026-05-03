@@ -51,8 +51,47 @@ export const participantsListResponseSchema = z.object({
   }),
 });
 
+// `/api/mentors`（admin role 専用）
+const mentorRoleSchema = z.enum(['admin', 'mentor']);
+
+export const mentorItemSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: mentorRoleSchema,
+  active: z.boolean(),
+  createdAt: z.string(), // ISO 8601 (UTC)
+  lastLoginAt: z.string().nullable(), // ISO 8601 (UTC)
+});
+
+export const mentorsListResponseSchema = z.object({
+  mentors: z.array(mentorItemSchema),
+});
+
+export const createMentorRequestSchema = z.object({
+  email: z.string().email(),
+  name: z.string().trim().min(1),
+  role: mentorRoleSchema.default('mentor'),
+});
+
+// 編集可能項目は name / role / active。email は OAuth 突合キーなので変更不可。
+// 1つ以上の項目が含まれていることを必須とする。
+export const updateMentorRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    role: mentorRoleSchema.optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.role !== undefined || v.active !== undefined, {
+    message: 'at least one of name, role, active is required',
+  });
+
 export type TodaySessionItem = z.infer<typeof todaySessionItemSchema>;
 export type TodaySessionsResponse = z.infer<typeof todaySessionsResponseSchema>;
 export type ParticipantsListQuery = z.infer<typeof participantsListQuerySchema>;
 export type ParticipantListItem = z.infer<typeof participantListItemSchema>;
 export type ParticipantsListResponse = z.infer<typeof participantsListResponseSchema>;
+export type MentorItem = z.infer<typeof mentorItemSchema>;
+export type MentorsListResponse = z.infer<typeof mentorsListResponseSchema>;
+export type CreateMentorRequest = z.infer<typeof createMentorRequestSchema>;
+export type UpdateMentorRequest = z.infer<typeof updateMentorRequestSchema>;

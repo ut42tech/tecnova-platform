@@ -1,14 +1,30 @@
 import type * as schema from '@tecnova/db';
-import { events, participants, sessions } from '@tecnova/db';
+import { events, mentors, participants, sessions } from '@tecnova/db';
 import type {
+  CreateMentorRequest,
+  MentorItem,
+  MentorsListResponse,
   ParticipantsListQuery,
   ParticipantsListResponse,
   TodaySessionsResponse,
+  UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
-import { count, desc, eq, like } from 'drizzle-orm';
+import { asc, count, desc, eq, like } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
+
+export type MentorErrorCode = 'EMAIL_ALREADY_EXISTS' | 'NOT_FOUND';
+
+export class MentorError extends Error {
+  constructor(
+    public code: MentorErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'MentorError';
+  }
+}
 
 // JST 基準で「今日」の日付文字列 'YYYY-MM-DD' を返す。
 // events.date は JST の開催日として保存しているため、ここも JST で判定する。
@@ -102,4 +118,81 @@ export const fetchParticipantsList = async (
     })),
     pagination: { page, limit, total },
   };
+};
+
+const toMentorItem = (row: {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'mentor';
+  active: boolean;
+  createdAt: Date;
+  lastLoginAt: Date | null;
+}): MentorItem => ({
+  id: row.id,
+  email: row.email,
+  name: row.name,
+  role: row.role,
+  active: row.active,
+  createdAt: row.createdAt.toISOString(),
+  lastLoginAt: row.lastLoginAt ? row.lastLoginAt.toISOString() : null,
+});
+
+const mentorColumns = {
+  id: mentors.id,
+  email: mentors.email,
+  name: mentors.name,
+  role: mentors.role,
+  active: mentors.active,
+  createdAt: mentors.createdAt,
+  lastLoginAt: mentors.lastLoginAt,
+} as const;
+
+export const fetchMentorsList = async (db: Db): Promise<MentorsListResponse> => {
+  const rows = await db.select(mentorColumns).from(mentors).orderBy(asc(mentors.createdAt));
+  return { mentors: rows.map(toMentorItem) };
+};
+
+export const createMentor = async (db: Db, input: CreateMentorRequest): Promise<MentorItem> => {
+  // email は UNIQUE。先にチェックして 409 を返す（ON CONFLICT に頼らないのは
+  // 失敗時に分かりやすいエラーコードを返すため）。
+  const [existing] = await db
+    .select({ id: mentors.id })
+    .from(mentors)
+    .where(eq(mentors.email, input.email))
+    .limit(1);
+  if (existing) {
+    throw new MentorError('EMAIL_ALREADY_EXISTS', `email already registered: ${input.email}`);
+  }
+
+  const [row] = await db
+    .insert(mentors)
+    .values({ email: input.email, name: input.name, role: input.role })
+    .returning(mentorColumns);
+  if (!row) {
+    throw new Error('failed to insert mentor');
+  }
+  return toMentorItem(row);
+};
+
+export const updateMentor = async (
+  db: Db,
+  id: string,
+  input: UpdateMentorRequest,
+): Promise<MentorItem> => {
+  // 部分更新。Zod 側で「1項目以上」を保証しているので、ここでは undefined を弾くだけ。
+  const patch: Partial<typeof mentors.$inferInsert> = {};
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.role !== undefined) patch.role = input.role;
+  if (input.active !== undefined) patch.active = input.active;
+
+  const [row] = await db
+    .update(mentors)
+    .set(patch)
+    .where(eq(mentors.id, id))
+    .returning(mentorColumns);
+  if (!row) {
+    throw new MentorError('NOT_FOUND', `mentor not found: ${id}`);
+  }
+  return toMentorItem(row);
 };
