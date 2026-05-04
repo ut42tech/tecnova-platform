@@ -86,6 +86,29 @@ export const updateMentorRequestSchema = z
     message: 'at least one of name, role, active is required',
   });
 
+// `/api/pre-registrations`（admin role 専用）
+// 学生側スプシの未アクティベート行を Source of Truth とする。
+// shape は checkin 側 `preRegisteredParticipantSchema` と同一だが、admin 名前空間で
+// 独立の契約として保ち、将来表示項目を増やす余地を残す。
+export const preRegistrationItemSchema = z.object({
+  preRegistrationId: z.string(),
+  nickname: z.string(),
+  grade: z.string(),
+  registeredAt: z.string(), // 'YYYY-MM-DD' (JST)
+});
+
+export const preRegistrationsListResponseSchema = z.object({
+  preRegistrations: z.array(preRegistrationItemSchema),
+});
+
+// preRegistrationId は backend が `PRE-{year}-{NNNN}` で自動採番するため、
+// リクエストには含めない（fool proof: admin の手入力ミスを防ぐ）。
+export const createPreRegistrationRequestSchema = z.object({
+  nickname: z.string().trim().min(1).max(40),
+  grade: z.string().trim().min(1).max(10),
+  registeredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required'),
+});
+
 export type TodaySessionItem = z.infer<typeof todaySessionItemSchema>;
 export type TodaySessionsResponse = z.infer<typeof todaySessionsResponseSchema>;
 export type ParticipantsListQuery = z.infer<typeof participantsListQuerySchema>;
@@ -95,3 +118,6 @@ export type MentorItem = z.infer<typeof mentorItemSchema>;
 export type MentorsListResponse = z.infer<typeof mentorsListResponseSchema>;
 export type CreateMentorRequest = z.infer<typeof createMentorRequestSchema>;
 export type UpdateMentorRequest = z.infer<typeof updateMentorRequestSchema>;
+export type PreRegistrationItem = z.infer<typeof preRegistrationItemSchema>;
+export type PreRegistrationsListResponse = z.infer<typeof preRegistrationsListResponseSchema>;
+export type CreatePreRegistrationRequest = z.infer<typeof createPreRegistrationRequestSchema>;
