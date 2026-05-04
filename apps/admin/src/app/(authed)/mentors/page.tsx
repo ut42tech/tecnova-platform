@@ -6,7 +6,7 @@ import type {
   MentorsListResponse,
   UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, apiJson } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
 
@@ -184,6 +184,16 @@ function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () =>
   const [active, setActive] = useState(mentor.active);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // onUpdated() でリストが再取得されると React が同じ key でコンポーネントを再利用するため、
+  // mentor prop が変わったときにローカルステートを同期しておく。
+  useEffect(() => {
+    setRole(mentor.role);
+  }, [mentor.role]);
+
+  useEffect(() => {
+    setActive(mentor.active);
+  }, [mentor.active]);
 
   const dirty = role !== mentor.role || active !== mentor.active;
   // 自分自身のロール降格 / 無効化は禁止（最後の admin が自分を外して詰むのを避ける）
