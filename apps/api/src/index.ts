@@ -6,6 +6,7 @@ import {
   checkInRequestSchema,
   checkOutRequestSchema,
   createMentorRequestSchema,
+  createPreRegistrationRequestSchema,
   participantsListQuerySchema,
   scanRequestSchema,
   updateMentorRequestSchema,
@@ -35,6 +36,13 @@ import {
   recordCheckIn,
   recordCheckOut,
 } from './lib/checkin';
+import {
+  createPreRegistration,
+  deletePreRegistration,
+  fetchPreRegistrationsList,
+  PreRegistrationError,
+  type PreRegistrationErrorCode,
+} from './lib/pre-registrations';
 
 type Bindings = {
   DB: D1Database;
@@ -195,6 +203,8 @@ const requireAdmin: MiddlewareHandler<{ Bindings: Bindings; Variables: Variables
 
 app.use('/api/mentors', requireAdmin);
 app.use('/api/mentors/*', requireAdmin);
+app.use('/api/pre-registrations', requireAdmin);
+app.use('/api/pre-registrations/*', requireAdmin);
 
 // メンター一覧。createdAt 昇順（運営の登録順）。
 app.get('/api/mentors', async (c) => {
@@ -248,9 +258,69 @@ app.patch('/api/mentors/:id', async (c) => {
   }
 });
 
+// 事前登録者一覧（admin: 学生側スプシの未アクティベート行）
+app.get('/api/pre-registrations', async (c) => {
+  try {
+    const result = await fetchPreRegistrationsList(
+      c.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+      c.env.GOOGLE_SHEETS_ID,
+    );
+    return c.json(result);
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 事前登録者の追加（preRegistrationId はバックエンドが採番して返す）
+app.post('/api/pre-registrations', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = createPreRegistrationRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+  }
+
+  try {
+    const item = await createPreRegistration(
+      c.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+      c.env.GOOGLE_SHEETS_ID,
+      parsed.data,
+    );
+    return c.json(item, 201);
+  } catch (e) {
+    if (e instanceof PreRegistrationError) {
+      return c.json({ error: e.code, message: e.message }, preRegistrationErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 事前登録者の削除（未アクティベートのみ。アクティベート済は 409）
+app.delete('/api/pre-registrations/:preRegistrationId', async (c) => {
+  const preRegistrationId = c.req.param('preRegistrationId');
+  try {
+    await deletePreRegistration(
+      c.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+      c.env.GOOGLE_SHEETS_ID,
+      preRegistrationId,
+    );
+    return c.body(null, 204);
+  } catch (e) {
+    if (e instanceof PreRegistrationError) {
+      return c.json({ error: e.code, message: e.message }, preRegistrationErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
 const mentorErrorStatus: Record<MentorErrorCode, ContentfulStatusCode> = {
   EMAIL_ALREADY_EXISTS: 409,
   NOT_FOUND: 404,
+};
+
+const preRegistrationErrorStatus: Record<PreRegistrationErrorCode, ContentfulStatusCode> = {
+  NOT_FOUND: 404,
+  ALREADY_ACTIVATED: 409,
+  SHEETS_WRITE_FAILED: 502,
 };
 
 const checkinErrorStatus: Record<CheckinErrorCode, ContentfulStatusCode> = {

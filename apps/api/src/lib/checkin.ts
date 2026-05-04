@@ -6,9 +6,11 @@ import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
 
-const SHEET_RANGE = 'participants!A2:G';
+// 学生側スプシのデータレンジ。1行目はヘッダー、2行目以降がデータ。
+// admin 側 (pre-registrations.ts) も同じレンジ・列構成を扱うため共有する。
+export const SHEET_RANGE = 'participants!A2:G';
 
-interface PreRegRow {
+export interface PreRegRow {
   rowNumber: number; // 1-indexed sheet row。ヘッダーが1行目なので A2:G を読んだ場合 index 0 → row 2
   preRegistrationId: string;
   nickname: string;
@@ -19,7 +21,7 @@ interface PreRegRow {
   activated: boolean;
 }
 
-const parseSheetRows = (rows: string[][]): PreRegRow[] =>
+export const parseSheetRows = (rows: string[][]): PreRegRow[] =>
   rows
     .map((row, i) => ({
       rowNumber: i + 2,
