@@ -74,6 +74,10 @@
 - **Worker / admin / checkin はすでに本番デプロイ済みで、OAuth ログインまで含めて動作確認済み**
   （本番URLは memory `project_production_urls.md` 参照）
 - 本番反映済みコードのカットオフは PR #11 (commit `efc2075`)。以降の PR は次回デプロイ対象
+- **CI/CD 整備済み**（`.github/workflows/`）：
+  - `ci.yml`：PR / main push で `biome check` + `turbo type-check`
+  - `deploy-api.yml`：main push（`apps/api/**` ほか paths フィルタ）で D1 リモートマイグレーション → `wrangler deploy`
+  - 必要 GitHub Secrets：`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`（未登録なら deploy job が失敗するので登録要）
 
 ---
 

@@ -162,11 +162,33 @@ pnpm dev
 
 ---
 
+## 🚢 Deployment / CI
+
+- **フロントエンド (`apps/checkin`, `apps/admin`)** — Vercel が GitHub 連携で自動デプロイ。
+- **API (`apps/api`)** — GitHub Actions で `main` ブランチへの push をトリガに Cloudflare Workers へデプロイ。
+  - ワークフロー: [`.github/workflows/deploy-api.yml`](./.github/workflows/deploy-api.yml)
+  - 起動条件: `apps/api/**` / `packages/db/**` / `packages/shared/**` / ルート設定ファイルの変更
+  - 手順: 依存解決 → 型チェック → D1 リモートマイグレーション適用 → `wrangler deploy`
+- **PR/main の lint + 型チェック** — [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) が `biome check` と `turbo type-check` を実行。
+
+### Required GitHub Secrets
+
+リポジトリの Settings → Secrets and variables → Actions に以下を登録：
+
+| 名前 | 用途 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Workers / D1 への deploy・migration 権限を持つ API トークン（"Edit Cloudflare Workers" テンプレート + D1 Edit 権限） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID |
+
+Worker の Secrets（`GOOGLE_SERVICE_ACCOUNT_KEY` 等）は CI ではなく `wrangler secret put` で別途登録済み。
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] 設計・要件定義
 - [ ] **Phase 1: MVPチェックインシステム**（運用開始対象）
-  - [ ] モノレポ・CI/CD基盤構築
+  - [x] モノレポ・CI/CD基盤構築
   - [ ] Drizzleスキーマ実装
   - [ ] Google Sheets API連携PoC
   - [ ] チェックインiPadアプリ
