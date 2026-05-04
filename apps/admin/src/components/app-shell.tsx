@@ -27,7 +27,12 @@ export function AppShell({ children }: Props) {
   const navItems: NavItem[] = [
     { href: '/', label: 'ダッシュボード' },
     { href: '/participants', label: '参加者一覧' },
-    ...(me.mentor.role === 'admin' ? [{ href: '/mentors', label: 'メンター管理' }] : []),
+    ...(me.mentor.role === 'admin'
+      ? [
+          { href: '/pre-registrations', label: '事前登録管理' },
+          { href: '/mentors', label: 'メンター管理' },
+        ]
+      : []),
   ];
 
   return (
