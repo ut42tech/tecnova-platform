@@ -44,4 +44,4 @@ jobs:
         run: pnpm --filter @tecnova/api db:apply:remote
 
       - name: Deploy to Cloudflare Workers
-        run: pnpm --filter @tecnova/api deploy
+        run: pnpm --filter @tecnova/api run deploy
