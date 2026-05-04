@@ -142,3 +142,50 @@ export const updateSheetRow = async (
     throw new Error(`Sheets update failed: ${resp.status} ${body}`);
   }
 };
+
+// 新規行を追加する。`insertDataOption=INSERT_ROWS` を指定することで、
+// クリア跡（空行）に上書きされず必ず新しい行として挿入される。
+export const appendSheetRows = async (
+  encodedServiceAccountKey: string,
+  spreadsheetId: string,
+  range: string,
+  values: string[][],
+): Promise<void> => {
+  const token = await getCachedAccessToken(encodedServiceAccountKey);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Sheets append failed: ${resp.status} ${body}`);
+  }
+};
+
+// 指定レンジのセル値をクリアする（行自体は残る）。事前登録者削除では
+// 行をフィジカルに消す代わりにこれを使い、パーサ側の空行フィルタで吸収する。
+// `deleteDimension` だと sheetId（数値）解決の追加コールが必要になるため避けた。
+export const clearSheetRange = async (
+  encodedServiceAccountKey: string,
+  spreadsheetId: string,
+  range: string,
+): Promise<void> => {
+  const token = await getCachedAccessToken(encodedServiceAccountKey);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:clear`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Sheets clear failed: ${resp.status} ${body}`);
+  }
+};
