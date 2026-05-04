@@ -1,9 +1,11 @@
 'use client';
 
-import type {
-  CreatePreRegistrationRequest,
-  PreRegistrationItem,
-  PreRegistrationsListResponse,
+import {
+  type CreatePreRegistrationRequest,
+  GRADES,
+  type Grade,
+  type PreRegistrationItem,
+  type PreRegistrationsListResponse,
 } from '@tecnova/shared/schemas';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { ApiError, apiFetch, apiJson } from '@/lib/api';
@@ -101,9 +103,11 @@ export default function PreRegistrationsPage() {
   );
 }
 
+const DEFAULT_GRADE: Grade = '小1';
+
 function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<void> }) {
   const [nickname, setNickname] = useState('');
-  const [grade, setGrade] = useState('');
+  const [grade, setGrade] = useState<Grade>(DEFAULT_GRADE);
   const [registeredAt, setRegisteredAt] = useState(todayInJst());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +121,7 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
       const body: CreatePreRegistrationRequest = { nickname, grade, registeredAt };
       await apiJson<PreRegistrationItem>('/api/pre-registrations', { method: 'POST', body });
       setNickname('');
-      setGrade('');
+      setGrade(DEFAULT_GRADE);
       setRegisteredAt(todayInJst());
       await onCreated();
     } catch (e) {
@@ -145,15 +149,18 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
         </label>
         <label className="flex flex-col gap-1 text-xs">
           学年
-          <input
-            type="text"
+          <select
             required
-            placeholder="小4 / 中2 など"
-            maxLength={10}
             value={grade}
-            onChange={(e) => setGrade(e.target.value)}
+            onChange={(e) => setGrade(e.target.value as Grade)}
             className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          />
+          >
+            {GRADES.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1 text-xs">
           事前登録日
