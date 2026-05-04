@@ -27,6 +27,12 @@
 | - | Bug fix: ログイン後に admin オリジンへ戻すよう callbackURL を絶対URL化 | #10 |
 | - | API CORS/trustedOrigins を env 経由で設定可能化（本番デプロイ準備） | direct commit `9ad8603` |
 | W2 Day 10 | `/api/sessions/today` + `/api/participants` 参照系API | #11 |
+| W2 Day 10 | `/api/mentors` CRUD（admin role guard） | #12 |
+| W2 Day 10 | 管理ダッシュボード（当日セッション一覧） | #13, #16 |
+| W2 Day 10 | 参加者一覧 + メンター管理画面 | #14 |
+| W2 Day 9 | checkin の PWA 化（manifest, apple-icon, viewport） | #15 |
+| - | 事前登録管理ページ（admin） + grade enum 制約 | #23 |
+| W2 Day 9 | checkin に opt-in QR スキャン + 確認クッション追加 | feat/checkin-qr-scanner |
 
 **Day 10 と Day 11 を意図的に入れ替えた**（Day 11 = Better Auth を先に）。理由は Day 10 の
 `/api/*` 系エンドポイントが認証必須で、後から auth を retrofit するより auth 基盤を先に
@@ -39,6 +45,8 @@
 
 - iPad PWA 側（`localhost:3000`）：
   - `/` ID 5桁手入力 → `/checkin/scan` → check-in / check-out 自動切替
+  - `/` 「QRコードで読み取る（試験運用）」ボタン → カメラ起動 → 5桁認識
+    → 確認画面（やり直す / チェックイン）→ `/checkin/scan`
   - `/first-time` 未アクティベート一覧 → タップ → `/checkin/activate` → ID表示
 - 管理画面（`localhost:3001`）：
   - `/login` → Google OAuth → mentors 許可リスト判定 → `/` でユーザー名表示
@@ -169,9 +177,11 @@ admin 専用ルートは `c.get('mentor').role !== 'admin'` を弾くチェッ�
 
 ## まだやっていない・残作業（順不同）
 
-- **W2 Day 10 残り 3 サブ PR**：上記参照
-- **Day 9 (PWA 化・iPad 実機テスト)**：UI/UX 調整なので最後で OK
-- **QR スキャナ**：今は手入力。zxing 等を使ったカメラ実装は将来別 PR
+- **Day 9 残り：iPad 実機での QR スキャン動作確認**：実装は入った（@zxing/browser、
+  opt-in カメラビュー、確認クッション）。iPad Safari 実機で起動・読み取り・キャンセル
+  動線を通すのは未実施
+- **QR スキャナの本格運用判断**：現状は「試験運用」ラベル付きの opt-in。手入力との
+  併用で初回開催 → 安定したらデフォルト化を検討
 - **Phase 1.5 系**：メンタースマホアプリ、活動ログ、CSVエクスポート等
 - **`docs/mvp.md` 9.1 の Day 12-14**：E2E テスト、リハーサル、本番リリース仕上げ
   （初回本番デプロイは済んだが、リリース時の運用手順整備は未着手）
