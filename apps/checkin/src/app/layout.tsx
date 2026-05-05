@@ -1,16 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist_Mono, Noto_Sans } from 'next/font/google';
+import { LINE_Seed_JP } from 'next/font/google';
 import '@tecnova/ui/globals.css';
 import { cn } from '@tecnova/ui/lib/utils';
 
-const fontSans = Noto_Sans({
+const fontSans = LINE_Seed_JP({
   variable: '--font-sans',
+  weight: ['100', '400', '700', '800'],
   subsets: ['latin'],
-});
-
-const fontMono = Geist_Mono({
-  variable: '--font-mono',
-  subsets: ['latin'],
+  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {
@@ -40,10 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="ja"
-      className={cn('h-full antialiased font-sans', fontSans.variable, fontMono.variable)}
-    >
+    <html lang="ja" className={cn('h-full antialiased font-sans', fontSans.variable)}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
