@@ -1,4 +1,4 @@
-# セッション引き継ぎノート（2026-05-04時点）
+# セッション引き継ぎノート（2026-05-05時点）
 
 新しい Claude セッションがこのリポジトリで作業を再開するときの起点。
 このファイルは「今ここまで来ている」を素早く把握するためのもの。詳細仕様は引き続き
@@ -52,6 +52,7 @@
   - `/login` → Google OAuth → mentors 許可リスト判定 → `/` でユーザー名表示
   - 未ログインで `/` を叩くと `/login` に飛ぶ
   - 許可リスト外メアドだと 403「アクセス権限がありません」
+  - `admin` ロールなら `/pre-registrations`（事前登録の追加/削除）と `/mentors` が利用可能
 - API（`localhost:8787`）：
   - `/health`, `/sheets/health`
   - `/checkin/pre-registered`, `/checkin/activate`,
@@ -59,6 +60,8 @@
   - `/api/auth/*`（Better Auth）
   - `/api/me`（middleware 動作確認用）
   - `/api/sessions/today`, `/api/participants`（管理画面用、auth-protected）
+  - `/api/mentors`（admin専用CRUD）
+  - `/api/pre-registrations`（admin専用：学生側スプシの追加/削除）
 
 ### 本番側でできていること
 
@@ -73,7 +76,7 @@
 - mentors テーブルに `ut42.nu@gmail.com` (`たくや`, role=admin) 投入済み（local + remote）
 - **Worker / admin / checkin はすでに本番デプロイ済みで、OAuth ログインまで含めて動作確認済み**
   （本番URLは memory `project_production_urls.md` 参照）
-- 本番反映済みコードのカットオフは PR #11 (commit `efc2075`)。以降の PR は次回デプロイ対象
+- 本番反映のカットオフは固定値として管理せず、最新デプロイの run/commit を都度確認する運用に変更
 - **CI/CD 整備済み**（`.github/workflows/`）：
   - `ci.yml`：PR / main push で `biome check` + `turbo type-check`
   - `deploy-api.yml`：main push（`apps/api/**` ほか paths フィルタ）で D1 リモートマイグレーション → `wrangler deploy`
@@ -83,44 +86,18 @@
 
 ## 次に取り掛かるフェーズ
 
-**W2 Day 10：管理画面コンテンツ（残り 3 サブ PR）**
+**MVP仕上げ（運用開始前の最終調整）**
 
-仕様: `docs/mvp.md` 6.2（API） + 7.2（画面）。
+現状、MVPの必須機能は概ね実装済み。以降は以下を優先して進める。
 
-PR #11 で 1 つ目（参照系 API）は完了済み。残作業：
-
-### サブ PR 2: `/api/mentors` CRUD（admin role guard 付き）
-
-| メソッド・パス | 用途 |
-| --- | --- |
-| `GET /api/mentors` | メンター一覧（admin role のみ） |
-| `POST /api/mentors` | メンター追加（admin role のみ） |
-| `PATCH /api/mentors/:id` | メンター編集（admin role のみ） |
-
-middleware は既に `c.get('user')` / `c.get('mentor')` を提供済み（`apps/api/src/index.ts`）。
-admin 専用ルートは `c.get('mentor').role !== 'admin'` を弾くチェックをハンドラ先頭または
-専用 sub-middleware で入れる。Zod スキーマは `packages/shared/src/schemas/admin.ts` に追加。
-
-### サブ PR 3: 管理画面ダッシュボード（フロント）
-
-`apps/admin/src/app/page.tsx` のダッシュボードプレースホルダを `/api/sessions/today` の
-レスポンスで置き換え：
-
-- ヘッダー: ログインユーザー名 + ログアウト（既存）
-- カード: 現在の来場者数 / 今日の総チェックイン / チェックアウト済
-- セッション一覧テーブル: ID / ニックネーム / 学年 / チェックイン時刻 /
-  チェックアウト時刻 / 状態
-- ナビゲーション: ダッシュボード / 参加者一覧 / メンター管理（admin のみ）
-
-実装メモ：admin app 側の fetch は `credentials: 'include'` 必須（既存の authClient と同じ理由）。
-時刻はサーバから UTC ISO で返るので、フロントで `Asia/Tokyo` の `Intl.DateTimeFormat` で表示。
-
-### サブ PR 4: 参加者一覧 + メンター管理画面（フロント）
-
-`/api/participants` と `/api/mentors` を叩く画面。検索ボックス（debounce）+ ページネーション。
-メンター管理は admin role のみナビに表示。
-
-**ユーザーの方針**：「フロントの UI/UX 調整は最後」。最初は機能が動けばよい程度の見た目で。
+1. **フロントエンドUXの本格調整**
+   - checkin: エラー導線、戻る導線、文言・ボタン配置、画面遷移テンポの最適化
+   - admin: 一覧の可読性、更新導線、ロール別ナビ体験の改善
+2. **運用手順の確定**
+   - Wi-Fi断フォールバック、当日オペレーション、権限者向け手順を文書化
+3. **昨年度データのD1反映**
+   - 個人情報を持ち込まず、participants / events / sessions の最小構成で移行
+   - JST/UTC変換と参照整合（participant_id, event_id）を検証
 
 ---
 
@@ -165,8 +142,8 @@ admin 専用ルートは `c.get('mentor').role !== 'admin'` を弾くチェッ�
 ### CORS とクロスオリジンクッキー
 
 - admin (3001) → API (8787) は別オリジン
-- `apps/api/src/index.ts` の `/api/*` cors は `origin: ['http://localhost:3001']` +
-  `credentials: true`
+- `apps/api/src/index.ts` の `/api/*` cors は `TRUSTED_ORIGINS` を参照して
+  許可オリジンを動的判定 + `credentials: true`
 - フロントの `authClient` は `fetchOptions.credentials: 'include'` で
   Worker のクッキーを送信
 - Better Auth の `signIn.social({ callbackURL })` には**絶対URLを渡す**
@@ -181,14 +158,11 @@ admin 専用ルートは `c.get('mentor').role !== 'admin'` を弾くチェッ�
 
 ## まだやっていない・残作業（順不同）
 
-- **Day 9 残り：iPad 実機での QR スキャン動作確認**：実装は入った（@zxing/browser、
-  opt-in カメラビュー、確認クッション）。iPad Safari 実機で起動・読み取り・キャンセル
-  動線を通すのは未実施
-- **QR スキャナの本格運用判断**：現状は「試験運用」ラベル付きの opt-in。手入力との
-  併用で初回開催 → 安定したらデフォルト化を検討
+- **iPad実機確認後のUX仕上げ**：読み取り失敗時の導線・表示文言・戻りフローの微調整
+- **運用リハーサル**：受付開始〜終了までの通し手順、ネットワーク障害時オペレーション確認
+- **昨年度データ反映**：匿名化済みデータの投入設計・整合性確認・ロールバック手順整備
+- **同時アクティベート採番衝突のリトライ実装**：`apps/api/src/lib/checkin.ts` TODO の解消
 - **Phase 1.5 系**：メンタースマホアプリ、活動ログ、CSVエクスポート等
-- **`docs/mvp.md` 9.1 の Day 12-14**：E2E テスト、リハーサル、本番リリース仕上げ
-  （初回本番デプロイは済んだが、リリース時の運用手順整備は未着手）
 
 ---
 
@@ -208,11 +182,6 @@ TRUSTED_ORIGINS=http://localhost:3001
 
 `TRUSTED_ORIGINS` はカンマ区切り。`/api/*` の CORS と Better Auth の trustedOrigins
 の両方で使われる。本番では admin の Vercel URL を Worker secret に登録済み。
-
-サービスアカウント JSON 鍵の保管場所：`~/Downloads/tecnova-platform-768dee139b95.json`
-（前セッションで指定）。
-
----
 
 ## ユーザーの作業スタイルメモ
 
