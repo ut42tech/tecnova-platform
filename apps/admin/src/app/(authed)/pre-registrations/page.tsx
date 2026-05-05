@@ -7,6 +7,44 @@ import {
   type PreRegistrationItem,
   type PreRegistrationsListResponse,
 } from '@tecnova/shared/schemas';
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@tecnova/ui/components/alert-dialog';
+import { Button } from '@tecnova/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@tecnova/ui/components/card';
+import { Input } from '@tecnova/ui/components/input';
+import { Label } from '@tecnova/ui/components/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@tecnova/ui/components/select';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@tecnova/ui/components/table';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { ApiError, apiFetch, apiJson } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
@@ -55,7 +93,10 @@ export default function PreRegistrationsPage() {
   if (me.mentor.role !== 'admin') {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <p className="text-lg text-red-600">この画面は admin ロールのみアクセスできます</p>
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>アクセス権限がありません</AlertTitle>
+          <AlertDescription>この画面は admin ロールのみアクセスできます</AlertDescription>
+        </Alert>
       </main>
     );
   }
@@ -68,36 +109,41 @@ export default function PreRegistrationsPage() {
 
       <CreatePreRegistrationForm onCreated={load} />
 
-      {state.kind === 'loading' && <p className="text-zinc-600">読み込み中...</p>}
-      {state.kind === 'error' && <p className="text-red-600">エラー: {state.message}</p>}
+      {state.kind === 'loading' && <Skeleton className="h-6 w-32" />}
+      {state.kind === 'error' && (
+        <Alert variant="destructive">
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+      )}
 
       {state.kind === 'ok' && (
-        <section className="overflow-x-auto rounded-lg border border-zinc-200">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-50 text-left">
-              <tr>
-                <th className="px-3 py-2 font-medium">事前登録ID</th>
-                <th className="px-3 py-2 font-medium">ニックネーム</th>
-                <th className="px-3 py-2 font-medium">学年</th>
-                <th className="px-3 py-2 font-medium">事前登録日</th>
-                <th className="px-3 py-2 font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>事前登録ID</TableHead>
+                <TableHead>ニックネーム</TableHead>
+                <TableHead>学年</TableHead>
+                <TableHead>事前登録日</TableHead>
+                <TableHead>操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {state.preRegistrations.length === 0 ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-zinc-500" colSpan={5}>
+                <TableRow>
+                  <TableCell className="py-6 text-center text-muted-foreground" colSpan={5}>
                     未アクティベートの事前登録はありません
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 state.preRegistrations.map((p) => (
                   <PreRegistrationRow key={p.preRegistrationId} item={p} onDeleted={load} />
                 ))
               )}
-            </tbody>
-          </table>
-        </section>
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </main>
   );
@@ -132,55 +178,62 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4">
-      <h3 className="text-sm font-semibold">事前登録の追加</h3>
-      <p className="text-xs text-zinc-500">事前登録IDは自動採番されます（PRE-YYYY-NNNN）。</p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs">
-          ニックネーム
-          <input
-            type="text"
-            required
-            maxLength={40}
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          学年
-          <select
-            required
-            value={grade}
-            onChange={(e) => setGrade(e.target.value as Grade)}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          >
-            {GRADES.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          事前登録日
-          <input
-            type="date"
-            required
-            value={registeredAt}
-            onChange={(e) => setRegisteredAt(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg bg-blue-600 px-4 py-1 text-sm font-semibold text-white disabled:bg-zinc-300"
-        >
-          {busy ? '送信中...' : '追加'}
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-600">エラー: {error}</p>}
+    <form onSubmit={submit}>
+      <Card>
+        <CardHeader>
+          <CardTitle>事前登録の追加</CardTitle>
+          <CardDescription>事前登録IDは自動採番されます（PRE-YYYY-NNNN）。</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(14rem,1fr)_8rem_12rem_auto] md:items-end">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="pre-registration-nickname">ニックネーム</Label>
+              <Input
+                id="pre-registration-nickname"
+                type="text"
+                required
+                maxLength={40}
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>学年</Label>
+              <Select value={grade} onValueChange={(value) => setGrade(value as Grade)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GRADES.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="pre-registration-date">事前登録日</Label>
+              <Input
+                id="pre-registration-date"
+                type="date"
+                required
+                value={registeredAt}
+                onChange={(e) => setRegisteredAt(e.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={busy}>
+              {busy ? '送信中...' : '追加'}
+            </Button>
+          </div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>追加できませんでした</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     </form>
   );
 }
@@ -194,12 +247,10 @@ function PreRegistrationRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deleteDescription = `${item.preRegistrationId}（${item.nickname}）を削除します。この操作は取り消せません。`;
 
   const remove = async () => {
     if (busy) return;
-    if (!confirm(`事前登録 ${item.preRegistrationId}（${item.nickname}）を削除しますか？`)) {
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -223,22 +274,39 @@ function PreRegistrationRow({
   };
 
   return (
-    <tr className="border-t border-zinc-100 align-top">
-      <td className="px-3 py-2 font-mono">{item.preRegistrationId}</td>
-      <td className="px-3 py-2">{item.nickname}</td>
-      <td className="px-3 py-2">{item.grade}</td>
-      <td className="px-3 py-2">{item.registeredAt}</td>
-      <td className="px-3 py-2">
-        <button
-          type="button"
-          onClick={remove}
-          disabled={busy}
-          className="rounded-lg bg-red-600 px-3 py-1 text-xs text-white disabled:bg-zinc-300"
-        >
-          {busy ? '削除中...' : '削除'}
-        </button>
-        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-      </td>
-    </tr>
+    <TableRow className="align-top">
+      <TableCell className="font-mono">{item.preRegistrationId}</TableCell>
+      <TableCell>{item.nickname}</TableCell>
+      <TableCell>{item.grade}</TableCell>
+      <TableCell>{item.registeredAt}</TableCell>
+      <TableCell>
+        <div className="flex flex-col items-start gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="destructive" size="xs" disabled={busy}>
+                {busy ? '削除中...' : '削除'}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>事前登録を削除しますか？</AlertDialogTitle>
+                <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={remove} disabled={busy}>
+                  削除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          {error && (
+            <Alert variant="destructive" className="max-w-xs">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }

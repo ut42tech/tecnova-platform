@@ -1,6 +1,18 @@
 'use client';
 
 import type { TodaySessionsResponse } from '@tecnova/shared/schemas';
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
+import { Badge } from '@tecnova/ui/components/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@tecnova/ui/components/table';
 import { useEffect, useState } from 'react';
 import { ApiError, apiJson } from '@/lib/api';
 
@@ -36,7 +48,7 @@ export default function DashboardPage() {
   if (state.kind === 'loading') {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <p className="text-lg">読み込み中...</p>
+        <Skeleton className="h-6 w-32" />
       </main>
     );
   }
@@ -44,7 +56,10 @@ export default function DashboardPage() {
   if (state.kind === 'error') {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-lg text-red-600">エラー: {state.message}</p>
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
       </main>
     );
   }
@@ -55,70 +70,68 @@ export default function DashboardPage() {
     <main className="flex flex-1 flex-col gap-6 p-8">
       <section className="flex items-baseline gap-4">
         <h2 className="text-lg font-semibold">本日のセッション</h2>
-        <span className="text-sm text-zinc-600">
+        <span className="text-sm text-muted-foreground">
           {event ? `イベント日付: ${event.date}` : '本日はまだチェックインがありません'}
         </span>
       </section>
 
-      <section className="grid grid-cols-3 gap-4">
+      <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard label="現在の来場者数" value={summary.currentlyPresent} />
         <SummaryCard label="今日の総チェックイン" value={summary.totalCheckedIn} />
         <SummaryCard label="チェックアウト済" value={summary.checkedOut} />
       </section>
 
-      <section className="overflow-x-auto rounded-lg border border-zinc-200">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left">
-            <tr>
-              <th className="px-3 py-2 font-medium">ID</th>
-              <th className="px-3 py-2 font-medium">ニックネーム</th>
-              <th className="px-3 py-2 font-medium">学年</th>
-              <th className="px-3 py-2 font-medium">チェックイン</th>
-              <th className="px-3 py-2 font-medium">チェックアウト</th>
-              <th className="px-3 py-2 font-medium">状態</th>
-            </tr>
-          </thead>
-          <tbody>
+      <Card className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead>
+              <TableHead>ニックネーム</TableHead>
+              <TableHead>学年</TableHead>
+              <TableHead>チェックイン</TableHead>
+              <TableHead>チェックアウト</TableHead>
+              <TableHead>状態</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {sessions.length === 0 ? (
-              <tr>
-                <td className="px-3 py-4 text-center text-zinc-500" colSpan={6}>
+              <TableRow>
+                <TableCell className="py-6 text-center text-muted-foreground" colSpan={6}>
                   該当データがありません
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               sessions.map((s) => (
-                <tr key={s.sessionId} className="border-t border-zinc-100">
-                  <td className="px-3 py-2 font-mono">{s.participantId}</td>
-                  <td className="px-3 py-2">{s.nickname}</td>
-                  <td className="px-3 py-2">{s.grade}</td>
-                  <td className="px-3 py-2">{fmtTime(s.checkedInAt)}</td>
-                  <td className="px-3 py-2">{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</td>
-                  <td className="px-3 py-2">
-                    {s.isPresent ? (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
-                        来場中
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
-                        退出済
-                      </span>
-                    )}
-                  </td>
-                </tr>
+                <TableRow key={s.sessionId}>
+                  <TableCell className="font-mono">{s.participantId}</TableCell>
+                  <TableCell>{s.nickname}</TableCell>
+                  <TableCell>{s.grade}</TableCell>
+                  <TableCell>{fmtTime(s.checkedInAt)}</TableCell>
+                  <TableCell>{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={s.isPresent ? 'default' : 'secondary'}>
+                      {s.isPresent ? '来場中' : '退出済'}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
-      </section>
+          </TableBody>
+        </Table>
+      </Card>
     </main>
   );
 }
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-zinc-200 p-4">
-      <div className="text-sm text-zinc-600">{label}</div>
-      <div className="mt-1 text-3xl font-bold">{value}</div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-3xl font-bold">{value}</div>
+      </CardContent>
+    </Card>
   );
 }

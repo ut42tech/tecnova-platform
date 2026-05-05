@@ -1,7 +1,16 @@
 'use client';
 
 import { IconBrandGoogleFilled } from '@tabler/icons-react';
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Button } from '@tecnova/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@tecnova/ui/components/card';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth-client';
 
@@ -32,14 +41,27 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-      <h1 className="text-2xl font-bold">テクノバ管理画面</h1>
-      <p className="text-zinc-600">許可リストに登録されたメンターのみログインできます</p>
-      <Button type="button" size="lg" onClick={signIn} disabled={busy}>
-        <IconBrandGoogleFilled data-icon="inline-start" />
-        {busy ? 'リダイレクト中...' : 'Google でログイン'}
-      </Button>
-      {error && <p className="text-red-600">エラー: {error}</p>}
+    <main className="flex flex-1 items-center justify-center p-8">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-2xl">テクノバ管理画面</CardTitle>
+          <CardDescription>許可リストに登録されたメンターのみログインできます</CardDescription>
+        </CardHeader>
+        {error && (
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertTitle>ログインエラー</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </CardContent>
+        )}
+        <CardFooter>
+          <Button type="button" size="lg" onClick={signIn} disabled={busy} className="w-full">
+            <IconBrandGoogleFilled data-icon="inline-start" />
+            {busy ? 'リダイレクト中...' : 'Google でログイン'}
+          </Button>
+        </CardFooter>
+      </Card>
     </main>
   );
 }
