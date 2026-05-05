@@ -7,7 +7,6 @@ const fontSans = LINE_Seed_JP({
   variable: '--font-sans',
   weight: ['100', '400', '700', '800'],
   subsets: ['latin'],
-  adjustFontFallback: false,
 });
 
 export const metadata: Metadata = {
