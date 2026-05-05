@@ -1,6 +1,7 @@
 'use client';
 
 import type { ScanResponse } from '@tecnova/shared/schemas';
+import { Button } from '@tecnova/ui/components/button';
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import Link from 'next/link';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
@@ -210,13 +211,9 @@ export default function Home() {
               onChange={(e) => setInput(e.target.value)}
               className="rounded-lg border border-zinc-300 px-4 py-4 text-center text-3xl tracking-widest"
             />
-            <button
-              type="submit"
-              disabled={input.length !== 5}
-              className="rounded-lg bg-blue-600 px-8 py-4 text-xl font-semibold text-white disabled:bg-zinc-300"
-            >
+            <Button type="submit" size="lg" disabled={input.length !== 5}>
               チェックイン / アウト
-            </button>
+            </Button>
           </form>
           <button
             type="button"

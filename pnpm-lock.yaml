@@ -91,6 +91,9 @@ importers:
       '@tecnova/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@tecnova/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@zxing/browser':
         specifier: ^0.2.0
         version: 0.2.0(@zxing/library@0.22.0)
