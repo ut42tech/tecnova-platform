@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@tecnova/ui/components/button';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth-client';
 
@@ -33,14 +34,9 @@ export default function LoginPage() {
     <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
       <h1 className="text-2xl font-bold">テクノバ管理画面</h1>
       <p className="text-zinc-600">許可リストに登録されたメンターのみログインできます</p>
-      <button
-        type="button"
-        onClick={signIn}
-        disabled={busy}
-        className="rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white disabled:bg-zinc-400"
-      >
+      <Button type="button" size="lg" onClick={signIn} disabled={busy}>
         {busy ? 'リダイレクト中...' : 'Google でログイン'}
-      </button>
+      </Button>
       {error && <p className="text-red-600">エラー: {error}</p>}
     </main>
   );
