@@ -1,5 +1,7 @@
 'use client';
 
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { apiFetch } from './api';
@@ -66,7 +68,7 @@ export function MeProvider({ children }: Props) {
   if (state.kind === 'loading') {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <p className="text-lg">読み込み中...</p>
+        <Skeleton className="h-6 w-32" />
       </main>
     );
   }
@@ -74,7 +76,10 @@ export function MeProvider({ children }: Props) {
   if (state.kind === 'forbidden') {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-lg text-red-600">{state.message}</p>
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>アクセス権限がありません</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
       </main>
     );
   }
@@ -82,7 +87,10 @@ export function MeProvider({ children }: Props) {
   if (state.kind === 'error') {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-        <p className="text-lg text-red-600">エラー: {state.message}</p>
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
       </main>
     );
   }

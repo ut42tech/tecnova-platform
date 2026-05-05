@@ -74,6 +74,9 @@ type Variables = {
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+const createDb = (env: Bindings) => drizzle(env.DB, { schema });
+const invalidBodyError = { error: 'INTERNAL' as const, message: 'invalid request body' };
+const invalidQueryError = { error: 'INTERNAL' as const, message: 'invalid query parameters' };
 
 // /checkin/* は iPad アプリから認証なしで呼ぶため、CORS は許可しておく。
 // 書き込みは sessions/participants の限定操作のみで、設計上の権限境界は保たれる。
@@ -176,10 +179,10 @@ app.get('/api/participants', async (c) => {
     search: c.req.query('search'),
   });
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid query parameters' }, 400);
+    return c.json(invalidQueryError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const result = await fetchParticipantsList(db, parsed.data);
     return c.json(result);
@@ -208,7 +211,7 @@ app.use('/api/pre-registrations/*', requireAdmin);
 
 // メンター一覧。createdAt 昇順（運営の登録順）。
 app.get('/api/mentors', async (c) => {
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const result = await fetchMentorsList(db);
     return c.json(result);
@@ -222,10 +225,10 @@ app.post('/api/mentors', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = createMentorRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const mentor = await createMentor(db, parsed.data);
     return c.json(mentor, 201);
@@ -243,10 +246,10 @@ app.patch('/api/mentors/:id', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = updateMentorRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const mentor = await updateMentor(db, id, parsed.data);
     return c.json(mentor);
@@ -276,7 +279,7 @@ app.post('/api/pre-registrations', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = createPreRegistrationRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
   try {
@@ -378,10 +381,10 @@ app.post('/checkin/activate', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = activateRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
 
   try {
     const result = await activatePreRegistered({
@@ -409,10 +412,10 @@ app.post('/checkin/sessions/check-in', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = checkInRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const result = await recordCheckIn(db, parsed.data.participantId);
     return c.json({
@@ -433,10 +436,10 @@ app.post('/checkin/sessions/check-out', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = checkOutRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const result = await recordCheckOut(db, parsed.data.participantId);
     return c.json({
@@ -459,10 +462,10 @@ app.post('/checkin/scan', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = scanRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'INTERNAL', message: 'invalid request body' }, 400);
+    return c.json(invalidBodyError, 400);
   }
 
-  const db = drizzle(c.env.DB, { schema });
+  const db = createDb(c.env);
   try {
     const result = await processScanValue(db, parsed.data.scanValue);
     if (result.action === 'check_in') {
