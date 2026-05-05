@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Inlined from shadcn/dist/tailwind.css (preset b5KafHCJm dependency).
+/* Inlined from shadcn/dist/tailwind.css.
    Inlined because the package only exposes this file via the "style"
    exports condition, which Turbopack's postcss bridge does not resolve. */
 @theme inline {
