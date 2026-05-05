@@ -31,6 +31,7 @@ import {
   activatePreRegistered,
   CheckinError,
   type CheckinErrorCode,
+  fetchParticipantProfile,
   fetchPreRegisteredList,
   processScanValue,
   recordCheckIn,
@@ -340,6 +341,24 @@ const internalError = (e: unknown) => ({
   message: e instanceof Error ? e.message : String(e),
 });
 
+const serializeScanResult = (result: Awaited<ReturnType<typeof processScanValue>>) => {
+  if (result.action === 'check_in') {
+    return {
+      action: 'check_in' as const,
+      sessionId: result.sessionId,
+      nickname: result.nickname,
+      checkedInAt: result.checkedInAt.toISOString(),
+    };
+  }
+  return {
+    action: 'check_out' as const,
+    nickname: result.nickname,
+    checkedInAt: result.checkedInAt.toISOString(),
+    checkedOutAt: result.checkedOutAt.toISOString(),
+    stayDurationMinutes: result.stayDurationMinutes,
+  };
+};
+
 app.get('/health', async (c) => {
   const db = drizzle(c.env.DB);
   const [row] = await db.select({ total: count() }).from(participants);
@@ -456,6 +475,74 @@ app.post('/checkin/sessions/check-out', async (c) => {
   }
 });
 
+// 受付専用の参加者プロフィール。QR/手入力後はまずここを表示し、
+// 現在の状態に応じた操作だけをフロントに出す。
+app.get('/checkin/participants/:participantId', async (c) => {
+  const participantId = c.req.param('participantId');
+  const parsed = checkInRequestSchema.safeParse({ participantId });
+  if (!parsed.success) {
+    return c.json(invalidQueryError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const profile = await fetchParticipantProfile(db, parsed.data.participantId);
+    return c.json({
+      participant: {
+        id: profile.participant.id,
+        nickname: profile.participant.nickname,
+        grade: profile.participant.grade,
+        activatedAt: profile.participant.activatedAt.toISOString(),
+      },
+      stats: {
+        visitCount: profile.stats.visitCount,
+        lastVisitedAt: profile.stats.lastVisitedAt
+          ? profile.stats.lastVisitedAt.toISOString()
+          : null,
+        totalStayDurationMinutes: profile.stats.totalStayDurationMinutes,
+      },
+      current: {
+        isPresent: profile.current.isPresent,
+        checkedInAt: profile.current.checkedInAt ? profile.current.checkedInAt.toISOString() : null,
+        nextAction: profile.current.nextAction,
+      },
+      sessions: profile.sessions.map((session) => ({
+        sessionId: session.sessionId,
+        checkedInAt: session.checkedInAt.toISOString(),
+        checkedOutAt: session.checkedOutAt ? session.checkedOutAt.toISOString() : null,
+        stayDurationMinutes: session.stayDurationMinutes,
+        isPresent: session.isPresent,
+      })),
+    });
+  } catch (e) {
+    if (e instanceof CheckinError) {
+      return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 受付プロフィール画面からの実行操作。サーバー側で現在状態を再判定して、
+// check-in / check-out のどちらか一方を実行する。
+app.post('/checkin/participants/:participantId/attendance', async (c) => {
+  const participantId = c.req.param('participantId');
+  const parsed = checkInRequestSchema.safeParse({ participantId });
+  if (!parsed.success) {
+    return c.json(invalidBodyError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const result = await processScanValue(db, parsed.data.participantId);
+    return c.json(serializeScanResult(result));
+  } catch (e) {
+    if (e instanceof CheckinError) {
+      return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
 // QR/バーコードスキャン用統合エンドポイント。スキャン値（5桁の participants.id）から
 // 当日の状態を判定し、check-in or check-out にディスパッチする。
 app.post('/checkin/scan', async (c) => {
@@ -468,21 +555,7 @@ app.post('/checkin/scan', async (c) => {
   const db = createDb(c.env);
   try {
     const result = await processScanValue(db, parsed.data.scanValue);
-    if (result.action === 'check_in') {
-      return c.json({
-        action: 'check_in' as const,
-        sessionId: result.sessionId,
-        nickname: result.nickname,
-        checkedInAt: result.checkedInAt.toISOString(),
-      });
-    }
-    return c.json({
-      action: 'check_out' as const,
-      nickname: result.nickname,
-      checkedInAt: result.checkedInAt.toISOString(),
-      checkedOutAt: result.checkedOutAt.toISOString(),
-      stayDurationMinutes: result.stayDurationMinutes,
-    });
+    return c.json(serializeScanResult(result));
   } catch (e) {
     if (e instanceof CheckinError) {
       return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);

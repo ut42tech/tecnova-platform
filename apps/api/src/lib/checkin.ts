@@ -231,6 +231,39 @@ const requireActiveParticipant = async (
   return { id: row.id, nickname: row.nickname };
 };
 
+interface ProfileParticipant {
+  id: string;
+  nickname: string;
+  grade: string;
+  activatedAt: Date;
+}
+
+const requireProfileParticipant = async (
+  db: Db,
+  participantId: string,
+): Promise<ProfileParticipant> => {
+  const [row] = await db
+    .select({
+      id: participants.id,
+      nickname: participants.nickname,
+      grade: participants.grade,
+      activatedAt: participants.activatedAt,
+      active: participants.active,
+    })
+    .from(participants)
+    .where(eq(participants.id, participantId))
+    .limit(1);
+  if (!row?.active) {
+    throw new CheckinError('NOT_FOUND', `participant ${participantId} not found or inactive`);
+  }
+  return {
+    id: row.id,
+    nickname: row.nickname,
+    grade: row.grade,
+    activatedAt: row.activatedAt,
+  };
+};
+
 const findActiveSessionToday = async (
   db: Db,
   participantId: string,
@@ -308,6 +341,85 @@ export const recordCheckOut = async (db: Db, participantId: string): Promise<Che
     checkedInAt: open.checkedInAt,
     checkedOutAt,
     stayDurationMinutes: Math.floor((checkedOutAt.getTime() - open.checkedInAt.getTime()) / 60_000),
+  };
+};
+
+export interface ParticipantProfile {
+  participant: ProfileParticipant;
+  stats: {
+    visitCount: number;
+    lastVisitedAt: Date | null;
+    totalStayDurationMinutes: number;
+  };
+  current: {
+    isPresent: boolean;
+    checkedInAt: Date | null;
+    nextAction: 'check_in' | 'check_out';
+  };
+  sessions: Array<{
+    sessionId: string;
+    checkedInAt: Date;
+    checkedOutAt: Date | null;
+    stayDurationMinutes: number | null;
+    isPresent: boolean;
+  }>;
+}
+
+export const fetchParticipantProfile = async (
+  db: Db,
+  participantId: string,
+): Promise<ParticipantProfile> => {
+  const participant = await requireProfileParticipant(db, participantId);
+  const sessionRows = await db
+    .select({
+      id: sessions.id,
+      checkedInAt: sessions.checkedInAt,
+      checkedOutAt: sessions.checkedOutAt,
+    })
+    .from(sessions)
+    .where(eq(sessions.participantId, participantId))
+    .orderBy(desc(sessions.checkedInAt));
+
+  const [todayEvent] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.date, todayJST()))
+    .limit(1);
+  const openToday = todayEvent
+    ? await findActiveSessionToday(db, participantId, todayEvent.id)
+    : null;
+  const now = new Date();
+  const sessionsHistory = sessionRows.map((session) => {
+    const end = session.checkedOutAt ?? (session.id === openToday?.id ? now : null);
+    const stayDurationMinutes = end
+      ? Math.max(0, Math.floor((end.getTime() - session.checkedInAt.getTime()) / 60_000))
+      : null;
+    return {
+      sessionId: session.id,
+      checkedInAt: session.checkedInAt,
+      checkedOutAt: session.checkedOutAt,
+      stayDurationMinutes,
+      isPresent: session.id === openToday?.id,
+    };
+  });
+  const totalStayDurationMinutes = sessionsHistory.reduce(
+    (total, session) => total + (session.stayDurationMinutes ?? 0),
+    0,
+  );
+
+  return {
+    participant,
+    stats: {
+      visitCount: sessionRows.length,
+      lastVisitedAt: sessionRows[0]?.checkedInAt ?? null,
+      totalStayDurationMinutes,
+    },
+    current: {
+      isPresent: openToday !== null,
+      checkedInAt: openToday?.checkedInAt ?? null,
+      nextAction: openToday ? 'check_out' : 'check_in',
+    },
+    sessions: sessionsHistory,
   };
 };
 
