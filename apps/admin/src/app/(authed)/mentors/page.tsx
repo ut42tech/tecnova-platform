@@ -6,6 +6,28 @@ import type {
   MentorsListResponse,
   UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
+import { Button } from '@tecnova/ui/components/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
+import { Checkbox } from '@tecnova/ui/components/checkbox';
+import { Input } from '@tecnova/ui/components/input';
+import { Label } from '@tecnova/ui/components/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@tecnova/ui/components/select';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@tecnova/ui/components/table';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { ApiError, apiJson } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
@@ -56,7 +78,10 @@ export default function MentorsPage() {
   if (me.mentor.role !== 'admin') {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <p className="text-lg text-red-600">この画面は admin ロールのみアクセスできます</p>
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>アクセス権限がありません</AlertTitle>
+          <AlertDescription>この画面は admin ロールのみアクセスできます</AlertDescription>
+        </Alert>
       </main>
     );
   }
@@ -69,36 +94,41 @@ export default function MentorsPage() {
 
       <CreateMentorForm onCreated={load} />
 
-      {state.kind === 'loading' && <p className="text-zinc-600">読み込み中...</p>}
-      {state.kind === 'error' && <p className="text-red-600">エラー: {state.message}</p>}
+      {state.kind === 'loading' && <Skeleton className="h-6 w-32" />}
+      {state.kind === 'error' && (
+        <Alert variant="destructive">
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+      )}
 
       {state.kind === 'ok' && (
-        <section className="overflow-x-auto rounded-lg border border-zinc-200">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-50 text-left">
-              <tr>
-                <th className="px-3 py-2 font-medium">メールアドレス</th>
-                <th className="px-3 py-2 font-medium">名前</th>
-                <th className="px-3 py-2 font-medium">ロール</th>
-                <th className="px-3 py-2 font-medium">状態</th>
-                <th className="px-3 py-2 font-medium">登録日</th>
-                <th className="px-3 py-2 font-medium">最終ログイン</th>
-                <th className="px-3 py-2 font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>メールアドレス</TableHead>
+                <TableHead>名前</TableHead>
+                <TableHead>ロール</TableHead>
+                <TableHead>状態</TableHead>
+                <TableHead>登録日</TableHead>
+                <TableHead>最終ログイン</TableHead>
+                <TableHead>操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {state.mentors.length === 0 ? (
-                <tr>
-                  <td className="px-3 py-4 text-center text-zinc-500" colSpan={7}>
+                <TableRow>
+                  <TableCell className="py-6 text-center text-muted-foreground" colSpan={7}>
                     該当データがありません
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 state.mentors.map((m) => <MentorRow key={m.id} mentor={m} onUpdated={load} />)
               )}
-            </tbody>
-          </table>
-        </section>
+            </TableBody>
+          </Table>
+        </Card>
       )}
     </main>
   );
@@ -131,49 +161,57 @@ function CreateMentorForm({ onCreated }: { onCreated: () => Promise<void> }) {
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4">
-      <h3 className="text-sm font-semibold">メンター追加</h3>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs">
-          メールアドレス
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          名前
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          ロール
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'admin' | 'mentor')}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          >
-            <option value="mentor">mentor</option>
-            <option value="admin">admin</option>
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg bg-blue-600 px-4 py-1 text-sm font-semibold text-white disabled:bg-zinc-300"
-        >
-          {busy ? '送信中...' : '追加'}
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-600">エラー: {error}</p>}
+    <form onSubmit={submit}>
+      <Card>
+        <CardHeader>
+          <CardTitle>メンター追加</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_minmax(12rem,1fr)_10rem_auto] md:items-end">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mentor-email">メールアドレス</Label>
+              <Input
+                id="mentor-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mentor-name">名前</Label>
+              <Input
+                id="mentor-name"
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>ロール</Label>
+              <Select value={role} onValueChange={(value) => setRole(value as 'admin' | 'mentor')}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mentor">mentor</SelectItem>
+                  <SelectItem value="admin">admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={busy}>
+              {busy ? '送信中...' : '追加'}
+            </Button>
+          </div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>追加できませんでした</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
     </form>
   );
 }
@@ -188,6 +226,7 @@ function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () =>
   const dirty = role !== mentor.role || active !== mentor.active;
   // 自分自身のロール降格 / 無効化は禁止（最後の admin が自分を外して詰むのを避ける）
   const isSelf = mentor.id === me.mentor.id;
+  const activeId = `mentor-active-${mentor.id}`;
 
   const save = async () => {
     if (!dirty || busy) return;
@@ -207,45 +246,50 @@ function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () =>
   };
 
   return (
-    <tr className="border-t border-zinc-100 align-top">
-      <td className="px-3 py-2">{mentor.email}</td>
-      <td className="px-3 py-2">{mentor.name}</td>
-      <td className="px-3 py-2">
-        <select
+    <TableRow className="align-top">
+      <TableCell>{mentor.email}</TableCell>
+      <TableCell>{mentor.name}</TableCell>
+      <TableCell>
+        <Select
           value={role}
-          onChange={(e) => setRole(e.target.value as 'admin' | 'mentor')}
+          onValueChange={(value) => setRole(value as 'admin' | 'mentor')}
           disabled={isSelf || busy}
-          className="rounded-lg border border-zinc-300 px-2 py-0.5 text-sm disabled:bg-zinc-100"
         >
-          <option value="mentor">mentor</option>
-          <option value="admin">admin</option>
-        </select>
-      </td>
-      <td className="px-3 py-2">
-        <label className="inline-flex items-center gap-1 text-sm">
-          <input
-            type="checkbox"
+          <SelectTrigger size="sm" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="mentor">mentor</SelectItem>
+            <SelectItem value="admin">admin</SelectItem>
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell>
+        <Label htmlFor={activeId} className="inline-flex">
+          <Checkbox
+            id={activeId}
             checked={active}
-            onChange={(e) => setActive(e.target.checked)}
+            onCheckedChange={(checked) => setActive(checked === true)}
             disabled={isSelf || busy}
           />
           有効
-        </label>
-      </td>
-      <td className="px-3 py-2">{fmtDate(mentor.createdAt)}</td>
-      <td className="px-3 py-2">{fmtDate(mentor.lastLoginAt)}</td>
-      <td className="px-3 py-2">
-        <button
-          type="button"
-          onClick={save}
-          disabled={!dirty || busy || isSelf}
-          className="rounded-lg bg-zinc-900 px-3 py-1 text-xs text-white disabled:bg-zinc-300"
-        >
-          {busy ? '保存中...' : '保存'}
-        </button>
-        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-        {isSelf && <p className="mt-1 text-xs text-zinc-500">自分自身は変更不可</p>}
-      </td>
-    </tr>
+        </Label>
+      </TableCell>
+      <TableCell>{fmtDate(mentor.createdAt)}</TableCell>
+      <TableCell>{fmtDate(mentor.lastLoginAt)}</TableCell>
+      <TableCell>
+        <div className="flex flex-col items-start gap-2">
+          <Button type="button" size="xs" onClick={save} disabled={!dirty || busy || isSelf}>
+            {busy ? '保存中...' : '保存'}
+          </Button>
+          {error && (
+            <Alert variant="destructive" className="max-w-xs">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {isSelf && <p className="text-xs text-muted-foreground">自分自身は変更不可</p>}
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }

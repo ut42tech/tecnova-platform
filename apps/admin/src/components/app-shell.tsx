@@ -1,5 +1,9 @@
 'use client';
 
+import { Badge } from '@tecnova/ui/components/badge';
+import { Button } from '@tecnova/ui/components/button';
+import { Separator } from '@tecnova/ui/components/separator';
+import { cn } from '@tecnova/ui/lib/utils';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
@@ -37,37 +41,36 @@ export function AppShell({ children }: Props) {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-8 py-4">
+      <header className="flex items-center justify-between px-8 py-4">
         <h1 className="text-xl font-bold">テクノバ管理画面</h1>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-zinc-600">
-            {me.user.name} ({me.mentor.role})
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            {me.user.name}
+            <Badge variant="secondary">{me.mentor.role}</Badge>
           </span>
-          <button
-            type="button"
-            onClick={signOut}
-            className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
-          >
+          <Button type="button" variant="outline" size="sm" onClick={signOut}>
             ログアウト
-          </button>
+          </Button>
         </div>
       </header>
-      <nav className="flex gap-2 border-b border-zinc-200 px-8 py-2">
+      <Separator />
+      <nav className="flex gap-2 px-8 py-2">
         {navItems.map((item) => {
           const active = pathname === item.href;
           return (
-            <Link
+            <Button
               key={item.href}
-              href={item.href}
-              className={`rounded-lg px-3 py-1 text-sm ${
-                active ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
-              }`}
+              asChild
+              variant={active ? 'default' : 'ghost'}
+              size="sm"
+              className={cn(!active && 'text-muted-foreground')}
             >
-              {item.label}
-            </Link>
+              <Link href={item.href}>{item.label}</Link>
+            </Button>
           );
         })}
       </nav>
+      <Separator />
       <div className="flex flex-1 flex-col">{children}</div>
     </div>
   );

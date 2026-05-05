@@ -1,6 +1,20 @@
 'use client';
 
 import type { ParticipantsListResponse } from '@tecnova/shared/schemas';
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
+import { Badge } from '@tecnova/ui/components/badge';
+import { Button } from '@tecnova/ui/components/button';
+import { Card } from '@tecnova/ui/components/card';
+import { Input } from '@tecnova/ui/components/input';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@tecnova/ui/components/table';
 import { useEffect, useState } from 'react';
 import { ApiError, apiJson } from '@/lib/api';
 
@@ -62,88 +76,89 @@ export default function ParticipantsPage() {
     <main className="flex flex-1 flex-col gap-6 p-8">
       <section className="flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-semibold">参加者一覧</h2>
-        <input
+        <Input
           type="search"
           placeholder="ニックネームで検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="rounded-lg border border-zinc-300 px-3 py-1 text-sm"
+          className="max-w-xs"
         />
       </section>
 
-      {state.kind === 'loading' && <p className="text-zinc-600">読み込み中...</p>}
+      {state.kind === 'loading' && <Skeleton className="h-6 w-32" />}
 
-      {state.kind === 'error' && <p className="text-red-600">エラー: {state.message}</p>}
+      {state.kind === 'error' && (
+        <Alert variant="destructive">
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+      )}
 
       {state.kind === 'ok' && (
         <>
-          <section className="overflow-x-auto rounded-lg border border-zinc-200">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-left">
-                <tr>
-                  <th className="px-3 py-2 font-medium">ID</th>
-                  <th className="px-3 py-2 font-medium">ニックネーム</th>
-                  <th className="px-3 py-2 font-medium">学年</th>
-                  <th className="px-3 py-2 font-medium">アクティベート日</th>
-                  <th className="px-3 py-2 font-medium">状態</th>
-                </tr>
-              </thead>
-              <tbody>
+          <Card className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>ニックネーム</TableHead>
+                  <TableHead>学年</TableHead>
+                  <TableHead>アクティベート日</TableHead>
+                  <TableHead>状態</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {state.data.participants.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-zinc-500" colSpan={5}>
+                  <TableRow>
+                    <TableCell className="py-6 text-center text-muted-foreground" colSpan={5}>
                       該当データがありません
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   state.data.participants.map((p) => (
-                    <tr key={p.id} className="border-t border-zinc-100">
-                      <td className="px-3 py-2 font-mono">{p.id}</td>
-                      <td className="px-3 py-2">{p.nickname}</td>
-                      <td className="px-3 py-2">{p.grade}</td>
-                      <td className="px-3 py-2">{fmtDate(p.activatedAt)}</td>
-                      <td className="px-3 py-2">
-                        {p.active ? (
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">
-                            有効
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
-                            無効
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+                    <TableRow key={p.id}>
+                      <TableCell className="font-mono">{p.id}</TableCell>
+                      <TableCell>{p.nickname}</TableCell>
+                      <TableCell>{p.grade}</TableCell>
+                      <TableCell>{fmtDate(p.activatedAt)}</TableCell>
+                      <TableCell>
+                        <Badge variant={p.active ? 'default' : 'secondary'}>
+                          {p.active ? '有効' : '無効'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </section>
+              </TableBody>
+            </Table>
+          </Card>
 
-          <section className="flex items-center justify-between text-sm text-zinc-600">
+          <section className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
               全 {state.data.pagination.total} 件中 {state.data.participants.length} 件表示
             </span>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="rounded-lg border border-zinc-300 px-3 py-1 disabled:text-zinc-300"
               >
                 前へ
-              </button>
+              </Button>
               <span>
                 {page} / {totalPages}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="rounded-lg border border-zinc-300 px-3 py-1 disabled:text-zinc-300"
               >
                 次へ
-              </button>
+              </Button>
             </div>
           </section>
         </>

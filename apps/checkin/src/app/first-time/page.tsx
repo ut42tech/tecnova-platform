@@ -5,6 +5,16 @@ import type {
   PreRegisteredListResponse,
   PreRegisteredParticipant,
 } from '@tecnova/shared/schemas';
+import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
+import { Button } from '@tecnova/ui/components/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@tecnova/ui/components/card';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { useEffect, useState } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
@@ -60,7 +70,7 @@ export default function FirstTimePage() {
   if (state.kind === 'loading') {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <p className="text-xl">読み込み中...</p>
+        <Skeleton className="h-8 w-32" />
       </main>
     );
   }
@@ -68,7 +78,7 @@ export default function FirstTimePage() {
   if (state.kind === 'activating') {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <p className="text-xl">登録中...</p>
+        <Skeleton className="h-8 w-32" />
       </main>
     );
   }
@@ -76,7 +86,10 @@ export default function FirstTimePage() {
   if (state.kind === 'error') {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-        <p className="text-xl text-red-600">エラー: {state.message}</p>
+        <Alert variant="destructive" className="max-w-md">
+          <AlertTitle>エラー</AlertTitle>
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
       </main>
     );
   }
@@ -84,10 +97,16 @@ export default function FirstTimePage() {
   if (state.kind === 'result') {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
-        <h1 className="text-4xl font-bold">{state.data.nickname}さん、ようこそ！</h1>
-        <p className="text-lg">あなたのIDは</p>
-        <p className="text-7xl font-bold tracking-wider">{state.data.participantId}</p>
-        <p className="text-lg">スタッフにIDを伝えてネームカードを受け取ってね</p>
+        <Card className="w-full max-w-xl">
+          <CardHeader>
+            <CardTitle className="text-4xl">{state.data.nickname}さん、ようこそ！</CardTitle>
+            <CardDescription className="text-lg">あなたのIDは</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-7xl font-bold tracking-wider">{state.data.participantId}</p>
+            <p className="text-lg">スタッフにIDを伝えてネームカードを受け取ってね</p>
+          </CardContent>
+        </Card>
       </main>
     );
   }
@@ -97,18 +116,23 @@ export default function FirstTimePage() {
       <h1 className="text-3xl font-bold">初めての方</h1>
       <p className="text-lg">自分のニックネームをタップしてね</p>
       {state.items.length === 0 ? (
-        <p className="text-lg text-zinc-600">未登録の方はいません</p>
+        <Card>
+          <CardContent>
+            <p className="text-lg text-muted-foreground">未登録の方はいません</p>
+          </CardContent>
+        </Card>
       ) : (
         <ul className="flex flex-col gap-3">
           {state.items.map((item) => (
             <li key={item.preRegistrationId}>
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => activate(item.preRegistrationId)}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-6 py-5 text-left text-2xl hover:bg-zinc-50"
+                className="h-auto w-full justify-start px-6 py-5 text-left text-2xl"
               >
                 {item.nickname}（{item.grade}）
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
