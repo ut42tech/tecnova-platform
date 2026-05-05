@@ -4,70 +4,22 @@ import { IconArrowRight, IconBug } from '@tabler/icons-react';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardDescription, CardFooter } from '@tecnova/ui/components/card';
 import { Input } from '@tecnova/ui/components/input';
+import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
-import {
-  ID_PATTERN,
-  ScanConfirmScreen,
-  ScanErrorScreen,
-  type ScanFlowState,
-  ScanResultScreen,
-  ScanSubmittingScreen,
-  scanParticipant,
-} from '@/components/scan-flow';
+import { PARTICIPANT_ID_PATTERN, participantProfilePath } from '@/lib/participant-id';
 
 export default function ManualPage() {
-  const [state, setState] = useState<ScanFlowState>({ kind: 'idle' });
+  const router = useRouter();
   const [input, setInput] = useState('');
-
-  const runScan = async (value: string) => {
-    setState({ kind: 'submitting' });
-    try {
-      const data = await scanParticipant(value);
-      setState({ kind: 'result', data, participantId: value });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const submitManual = (e: FormEvent) => {
     e.preventDefault();
-    if (!ID_PATTERN.test(input)) return;
-    setState({ kind: 'confirming', value: input, source: 'manual' });
+    if (!PARTICIPANT_ID_PATTERN.test(input)) return;
+    setIsNavigating(true);
+    router.push(participantProfilePath(input));
   };
-
-  const reset = () => {
-    setInput('');
-    setState({ kind: 'idle' });
-  };
-
-  if (state.kind === 'submitting') {
-    return <ScanSubmittingScreen />;
-  }
-
-  if (state.kind === 'error') {
-    return <ScanErrorScreen message={state.message} onReset={reset} />;
-  }
-
-  if (state.kind === 'result') {
-    return (
-      <ScanResultScreen data={state.data} participantId={state.participantId} onReset={reset} />
-    );
-  }
-
-  if (state.kind === 'confirming') {
-    return (
-      <ScanConfirmScreen
-        value={state.value}
-        source={state.source}
-        onCancel={() => setState({ kind: 'idle' })}
-        onConfirm={() => void runScan(state.value)}
-      />
-    );
-  }
 
   return (
     <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
@@ -92,6 +44,7 @@ export default function ManualPage() {
                 required
                 autoComplete="off"
                 autoFocus
+                disabled={isNavigating}
                 value={input}
                 onChange={(e) => setInput(e.target.value.replace(/\D/g, '').slice(0, 5))}
                 placeholder="00000"
@@ -102,10 +55,10 @@ export default function ManualPage() {
               <Button
                 type="submit"
                 size="lg"
-                disabled={input.length !== 5}
+                disabled={input.length !== 5 || isNavigating}
                 className="h-16 w-full text-xl"
               >
-                この ID で進む
+                {isNavigating ? 'プロフィールを開いています' : 'この ID で進む'}
                 <IconArrowRight className="size-6" data-icon="inline-end" />
               </Button>
             </CardFooter>

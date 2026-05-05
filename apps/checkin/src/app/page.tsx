@@ -13,17 +13,10 @@ import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardDescription } from '@tecnova/ui/components/card';
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { PanelHeader, type PanelTone } from '@/components/panel-header';
-import {
-  ID_PATTERN,
-  ScanConfirmScreen,
-  ScanErrorScreen,
-  type ScanFlowState,
-  ScanResultScreen,
-  ScanSubmittingScreen,
-  scanParticipant,
-} from '@/components/scan-flow';
+import { PARTICIPANT_ID_PATTERN, participantProfilePath } from '@/lib/participant-id';
 
 function ActionPanel({
   title,
@@ -60,13 +53,15 @@ function ActionPanel({
 }
 
 export default function Home() {
-  const [state, setState] = useState<ScanFlowState>({ kind: 'idle' });
+  const router = useRouter();
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scannerAttempt, setScannerAttempt] = useState(0);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
+  const [navigatingId, setNavigatingId] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
+  const navigatingRef = useRef(false);
 
   const refreshVideoDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return [];
@@ -77,11 +72,10 @@ export default function Home() {
     return devices;
   }, []);
 
-  // idle のときだけスキャナを起動。
-  // 確認画面・送信中・結果表示中は止めて誤検出と無駄な CPU を避ける。
+  // プロフィールへ遷移中はスキャナを止めて、同じQRの連続検出を避ける。
   // biome-ignore lint/correctness/useExhaustiveDependencies: scannerAttempt is an explicit restart token for reinitializing the camera.
   useEffect(() => {
-    if (state.kind !== 'idle') return;
+    if (navigatingId) return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -96,9 +90,12 @@ export default function Home() {
           if (cancelled || !result) return;
           const value = result.getText().trim();
           // 5桁の内製ID形式以外は無視（誤読防止）
-          if (!ID_PATTERN.test(value)) return;
-          // 一度認識したら即時 API は叩かず、確認画面でクッションを置く
-          setState({ kind: 'confirming', value, source: 'qr' });
+          if (!PARTICIPANT_ID_PATTERN.test(value)) return;
+          if (navigatingRef.current) return;
+          navigatingRef.current = true;
+          controlsRef.current?.stop();
+          setNavigatingId(value);
+          router.push(participantProfilePath(value));
         })
         .then((controls) => {
           if (cancelled) {
@@ -123,7 +120,7 @@ export default function Home() {
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
-  }, [refreshVideoDevices, scannerAttempt, selectedDeviceId, state.kind]);
+  }, [navigatingId, refreshVideoDevices, router, scannerAttempt, selectedDeviceId]);
 
   const switchCamera = async () => {
     const devices = videoDevices.length > 0 ? videoDevices : await refreshVideoDevices();
@@ -139,48 +136,6 @@ export default function Home() {
     setSelectedDeviceId(devices[nextIndex]?.deviceId);
   };
 
-  const runScan = async (value: string) => {
-    setState({ kind: 'submitting' });
-    try {
-      const data = await scanParticipant(value);
-      setState({ kind: 'result', data, participantId: value });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  const reset = () => {
-    setState({ kind: 'idle' });
-  };
-
-  if (state.kind === 'submitting') {
-    return <ScanSubmittingScreen />;
-  }
-
-  if (state.kind === 'error') {
-    return <ScanErrorScreen message={state.message} onReset={reset} />;
-  }
-
-  if (state.kind === 'result') {
-    return (
-      <ScanResultScreen data={state.data} participantId={state.participantId} onReset={reset} />
-    );
-  }
-
-  if (state.kind === 'confirming') {
-    return (
-      <ScanConfirmScreen
-        value={state.value}
-        source={state.source}
-        onCancel={reset}
-        onConfirm={() => void runScan(state.value)}
-      />
-    );
-  }
-
   return (
     <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col">
@@ -194,6 +149,15 @@ export default function Home() {
             <CardContent className="flex flex-1 flex-col gap-4">
               <div className="relative min-h-72 w-full flex-1 overflow-hidden rounded-lg bg-slate-950 lg:h-[clamp(280px,calc(100svh-340px),560px)] lg:flex-none">
                 <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
+                {navigatingId && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/85 p-6 text-center text-white">
+                    <IconQrcode className="size-12" aria-hidden="true" />
+                    <p className="text-2xl font-black">プロフィールを開いています</p>
+                    <p className="text-4xl font-black tracking-widest tabular-nums">
+                      {navigatingId}
+                    </p>
+                  </div>
+                )}
                 {cameraError && (
                   <div className="absolute inset-0 flex items-center justify-center bg-slate-950/85 p-6 text-center text-lg font-bold text-white">
                     <IconCamera className="mr-3 size-8" aria-hidden="true" />
@@ -207,6 +171,7 @@ export default function Home() {
                   variant="outline"
                   size="lg"
                   className="h-12 text-base"
+                  disabled={navigatingId !== null}
                   onClick={() => setScannerAttempt((attempt) => attempt + 1)}
                 >
                   <IconRefresh className="size-5" data-icon="inline-start" />
@@ -217,6 +182,7 @@ export default function Home() {
                   variant="outline"
                   size="lg"
                   className="h-12 text-base"
+                  disabled={navigatingId !== null}
                   onClick={() => void switchCamera()}
                 >
                   <IconCameraRotate className="size-5" data-icon="inline-start" />
