@@ -20,6 +20,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@tabler/icons-react':
+        specifier: ^3.42.0
+        version: 3.42.0(react@19.2.4)
       '@tecnova/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -88,6 +91,9 @@ importers:
 
   apps/checkin:
     dependencies:
+      '@tabler/icons-react':
+        specifier: ^3.42.0
+        version: 3.42.0(react@19.2.4)
       '@tecnova/shared':
         specifier: workspace:*
         version: link:../../packages/shared

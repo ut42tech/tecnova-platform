@@ -1,5 +1,6 @@
 'use client';
 
+import { IconBrandGoogleFilled } from '@tabler/icons-react';
 import { Button } from '@tecnova/ui/components/button';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth-client';
@@ -35,6 +36,7 @@ export default function LoginPage() {
       <h1 className="text-2xl font-bold">テクノバ管理画面</h1>
       <p className="text-zinc-600">許可リストに登録されたメンターのみログインできます</p>
       <Button type="button" size="lg" onClick={signIn} disabled={busy}>
+        <IconBrandGoogleFilled data-icon="inline-start" />
         {busy ? 'リダイレクト中...' : 'Google でログイン'}
       </Button>
       {error && <p className="text-red-600">エラー: {error}</p>}

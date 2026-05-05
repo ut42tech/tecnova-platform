@@ -1,5 +1,6 @@
 'use client';
 
+import { IconArrowRight } from '@tabler/icons-react';
 import type { ScanResponse } from '@tecnova/shared/schemas';
 import { Button } from '@tecnova/ui/components/button';
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser';
@@ -213,6 +214,7 @@ export default function Home() {
             />
             <Button type="submit" size="lg" disabled={input.length !== 5}>
               チェックイン / アウト
+              <IconArrowRight data-icon="inline-end" />
             </Button>
           </form>
           <button
