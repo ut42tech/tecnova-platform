@@ -82,9 +82,21 @@ const createDb = (env: Bindings) => drizzle(env.DB, { schema });
 const invalidBodyError = { error: 'INTERNAL' as const, message: 'invalid request body' };
 const invalidQueryError = { error: 'INTERNAL' as const, message: 'invalid query parameters' };
 
-// /checkin/* は iPad アプリから認証なしで呼ぶため、CORS は許可しておく。
-// 書き込みは sessions/participants の限定操作のみで、設計上の権限境界は保たれる。
-app.use('/checkin/*', cors());
+// /checkin/* は iPad アプリから cross-origin で呼ばれる。Better Auth の
+// セッションクッキーを同送するため、/api/* と同じ trustedOrigins + credentials
+// 前提の CORS に揃える。
+app.use(
+  '/checkin/*',
+  cors({
+    origin: (origin, c) => {
+      const allowed = parseTrustedOrigins(c.env.TRUSTED_ORIGINS);
+      return allowed.includes(origin) ? origin : null;
+    },
+    credentials: true,
+    allowHeaders: ['Content-Type'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  }),
+);
 
 // /api/* は管理画面からの呼び出し。Better Auth がセッションクッキーを発行するので
 // CORS は credentials を許可した上で trustedOrigins と整合させる。
@@ -109,12 +121,15 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
   return auth.handler(c.req.raw);
 });
 
-// /api/auth/* 以外の /api/* は認証必須。
+// /api/auth/* 以外の /api/* と /checkin/* は認証必須。
 // セッション取得 → mentors テーブル突合 で2段判定する。
 // signIn 時の許可リスト判定は OAuth コールバック側で同じ突合を行う想定だが、
 // このミドルウェアでも毎リクエスト確認することで、後から `active=false` に
 // された mentor が古いセッションで API を叩き続けるのを防ぐ。
-app.use('/api/*', async (c, next) => {
+const requireAuthenticatedMentor: MiddlewareHandler<{
+  Bindings: Bindings;
+  Variables: Variables;
+}> = async (c, next) => {
   if (c.req.path.startsWith('/api/auth/')) return next();
 
   const auth = createAuth(c.env);
@@ -152,7 +167,10 @@ app.use('/api/*', async (c, next) => {
     role: mentor.role,
   });
   await next();
-});
+};
+
+app.use('/api/*', requireAuthenticatedMentor);
+app.use('/checkin/*', requireAuthenticatedMentor);
 
 // 認証確認用：ログイン中の user / mentor 情報を返す。管理画面のフロントが
 // セッション復元の確認や上部のユーザー名表示に使う。

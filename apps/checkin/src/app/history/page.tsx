@@ -10,7 +10,6 @@ import {
   IconUser,
 } from '@tabler/icons-react';
 import type {
-  ErrorResponse,
   HistoryBulkCheckOutResponse,
   TodaySessionItem,
   TodaySessionsResponse,
@@ -45,6 +44,7 @@ import {
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
+import { apiFetch, readErrorMessage } from '@/lib/api';
 import {
   formatDuration,
   formatJapaneseDate,
@@ -53,15 +53,8 @@ import {
 } from '@/lib/format';
 import { participantProfilePath } from '@/lib/participant-id';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
-
-const readErrorMessage = async (response: Response): Promise<string> => {
-  const body = (await response.json().catch(() => null)) as ErrorResponse | null;
-  return body?.message ?? `HTTP ${response.status}`;
-};
-
 const fetchTodayHistory = async (): Promise<TodaySessionsResponse> => {
-  const response = await fetch(`${API_URL}/checkin/history/today`, { cache: 'no-store' });
+  const response = await apiFetch('/checkin/history/today', { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response));
   }
@@ -71,10 +64,9 @@ const fetchTodayHistory = async (): Promise<TodaySessionsResponse> => {
 const postHistoryBulkCheckOut = async (
   participantIds: string[],
 ): Promise<HistoryBulkCheckOutResponse> => {
-  const response = await fetch(`${API_URL}/checkin/history/check-out-bulk`, {
+  const response = await apiFetch('/checkin/history/check-out-bulk', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ participantIds }),
+    body: { participantIds },
   });
   if (!response.ok) {
     throw new Error(await readErrorMessage(response));

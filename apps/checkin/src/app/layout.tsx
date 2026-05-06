@@ -1,11 +1,8 @@
-import { IconClipboardCheck, IconHome } from '@tabler/icons-react';
-import { Button } from '@tecnova/ui/components/button';
 import type { Metadata, Viewport } from 'next';
 import { LINE_Seed_JP } from 'next/font/google';
-import Image from 'next/image';
-import Link from 'next/link';
 import '@tecnova/ui/globals.css';
 import { cn } from '@tecnova/ui/lib/utils';
+import { AppShell } from '@/components/app-shell';
 
 const fontSans = LINE_Seed_JP({
   variable: '--font-sans',
@@ -42,42 +39,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className={cn('h-full antialiased font-sans', fontSans.variable)}>
       <body className="min-h-full">
-        <header className="fixed inset-x-0 top-0 z-50 bg-white shadow-sm">
-          <div className="mx-auto flex h-24 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-            <Link href="/" className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
-              <span
-                aria-hidden="true"
-                className="flex size-14 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700"
-              >
-                <IconClipboardCheck className="size-8" />
-              </span>
-              <span className="truncate text-3xl font-black tracking-normal sm:text-4xl">
-                うけつけシステム
-              </span>
-            </Link>
-            <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-              <Button asChild variant="outline" size="lg" className="h-12 px-5 text-lg">
-                <Link href="/">
-                  <IconHome className="size-6" data-icon="inline-start" />
-                  ホーム
-                </Link>
-              </Button>
-              <span
-                aria-hidden="true"
-                className="hidden h-10 w-px shrink-0 bg-slate-200 sm:block"
-              />
-              <Image
-                src="/logo_tecnova.png"
-                alt="TECNOVA"
-                width={153}
-                height={40}
-                priority
-                className="hidden h-8 w-auto shrink-0 sm:block md:h-10"
-              />
-            </div>
-          </div>
-        </header>
-        <div className="box-border flex min-h-svh flex-col pt-24">{children}</div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -10,11 +10,7 @@ import {
   IconLogout2,
   IconUser,
 } from '@tabler/icons-react';
-import type {
-  ErrorResponse,
-  ParticipantProfileResponse,
-  ScanResponse,
-} from '@tecnova/shared/schemas';
+import type { ParticipantProfileResponse, ScanResponse } from '@tecnova/shared/schemas';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
@@ -33,6 +29,7 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
+import { apiFetch, readErrorMessage } from '@/lib/api';
 import {
   formatDuration,
   formatJapaneseDateFromIso,
@@ -41,8 +38,6 @@ import {
 } from '@/lib/format';
 import { PARTICIPANT_ID_PATTERN } from '@/lib/participant-id';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
-
 type State =
   | { kind: 'loading' }
   | { kind: 'ready'; profile: ParticipantProfileResponse }
@@ -50,15 +45,10 @@ type State =
   | { kind: 'result'; data: ScanResponse }
   | { kind: 'error'; message: string };
 
-const readErrorMessage = async (response: Response): Promise<string> => {
-  const body = (await response.json().catch(() => null)) as ErrorResponse | null;
-  return body?.message ?? `HTTP ${response.status}`;
-};
-
 const fetchParticipantProfile = async (
   participantId: string,
 ): Promise<ParticipantProfileResponse> => {
-  const response = await fetch(`${API_URL}/checkin/participants/${participantId}`, {
+  const response = await apiFetch(`/checkin/participants/${participantId}`, {
     cache: 'no-store',
   });
   if (!response.ok) {
@@ -68,7 +58,7 @@ const fetchParticipantProfile = async (
 };
 
 const postAttendance = async (participantId: string): Promise<ScanResponse> => {
-  const response = await fetch(`${API_URL}/checkin/participants/${participantId}/attendance`, {
+  const response = await apiFetch(`/checkin/participants/${participantId}/attendance`, {
     method: 'POST',
   });
   if (!response.ok) {

@@ -28,9 +28,8 @@ import { Skeleton } from '@tecnova/ui/components/skeleton';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ResultSummaryCard } from '@/components/result-summary-card';
+import { apiFetch, readErrorMessage } from '@/lib/api';
 import { formatJapaneseDate } from '@/lib/format';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
 
 type State =
   | { kind: 'loading' }
@@ -45,8 +44,8 @@ export default function FirstTimePage() {
   const loadParticipants = useCallback(async () => {
     setState({ kind: 'loading' });
     try {
-      const r = await fetch(`${API_URL}/checkin/pre-registered`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const r = await apiFetch('/checkin/pre-registered');
+      if (!r.ok) throw new Error(await readErrorMessage(r));
       const data = (await r.json()) as PreRegisteredListResponse;
       setState({ kind: 'list', items: data.participants });
     } catch (e) {
@@ -64,10 +63,9 @@ export default function FirstTimePage() {
   const activate = async (item: PreRegisteredParticipant) => {
     setState({ kind: 'activating' });
     try {
-      const r = await fetch(`${API_URL}/checkin/activate`, {
+      const r = await apiFetch('/checkin/activate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preRegistrationId: item.preRegistrationId }),
+        body: { preRegistrationId: item.preRegistrationId },
       });
       const body = (await r.json()) as ActivateResponse | { error: string; message: string };
       if (!r.ok) {
