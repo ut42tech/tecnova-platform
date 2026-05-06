@@ -8,7 +8,6 @@ import {
   IconHome,
   IconLogin2,
   IconLogout2,
-  IconRefresh,
   IconUser,
 } from '@tabler/icons-react';
 import type {
@@ -335,23 +334,12 @@ export default function ReceptionParticipantPage() {
         icon={didCheckIn ? <IconLogin2 className="size-8" /> : <IconLogout2 className="size-8" />}
         rows={resultRows}
         footer={
-          <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
-            <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
-              <Link href="/">
-                <IconHome className="size-6" data-icon="inline-start" />
-                ホームに戻る
-              </Link>
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => void loadProfile()}
-              className="h-16 text-xl"
-            >
-              <IconRefresh className="size-6" data-icon="inline-start" />
-              プロフィールを見る
-            </Button>
-          </div>
+          <Button asChild size="lg" className="h-16 w-full text-xl">
+            <Link href="/">
+              <IconHome className="size-6" data-icon="inline-start" />
+              ホームに戻る
+            </Link>
+          </Button>
         }
       />
     );

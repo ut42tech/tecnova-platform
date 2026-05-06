@@ -1,7 +1,8 @@
 import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
-import { and, desc, eq, isNull, like } from 'drizzle-orm';
+import type { TodaySessionsResponse } from '@tecnova/shared/schemas';
+import { and, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -420,6 +421,138 @@ export const fetchParticipantProfile = async (
       nextAction: openToday ? 'check_out' : 'check_in',
     },
     sessions: sessionsHistory,
+  };
+};
+
+export const fetchReceptionHistoryToday = async (db: Db): Promise<TodaySessionsResponse> => {
+  const [event] = await db
+    .select({ id: events.id, date: events.date })
+    .from(events)
+    .where(eq(events.date, todayJST()))
+    .limit(1);
+
+  if (!event) {
+    return {
+      event: null,
+      sessions: [],
+      summary: { totalCheckedIn: 0, currentlyPresent: 0, checkedOut: 0 },
+    };
+  }
+
+  const rows = await db
+    .select({
+      sessionId: sessions.id,
+      participantId: sessions.participantId,
+      nickname: participants.nickname,
+      grade: participants.grade,
+      checkedInAt: sessions.checkedInAt,
+      checkedOutAt: sessions.checkedOutAt,
+    })
+    .from(sessions)
+    .innerJoin(participants, eq(sessions.participantId, participants.id))
+    .where(and(eq(sessions.eventId, event.id), eq(participants.active, true)))
+    .orderBy(desc(sessions.checkedInAt));
+
+  const items = rows.map((r) => ({
+    sessionId: r.sessionId,
+    participantId: r.participantId,
+    nickname: r.nickname,
+    grade: r.grade,
+    checkedInAt: r.checkedInAt.toISOString(),
+    checkedOutAt: r.checkedOutAt ? r.checkedOutAt.toISOString() : null,
+    isPresent: r.checkedOutAt === null,
+  }));
+  const currentlyPresent = items.filter((item) => item.isPresent).length;
+
+  return {
+    event,
+    sessions: items,
+    summary: {
+      totalCheckedIn: items.length,
+      currentlyPresent,
+      checkedOut: items.length - currentlyPresent,
+    },
+  };
+};
+
+export interface BulkCheckOutResult {
+  checkedOutAt: Date;
+  participants: Array<{
+    participantId: string;
+    nickname: string;
+    checkedInAt: Date;
+    checkedOutAt: Date;
+    stayDurationMinutes: number;
+  }>;
+}
+
+export const recordBulkCheckOut = async (
+  db: Db,
+  participantIds: string[],
+): Promise<BulkCheckOutResult> => {
+  const uniqueParticipantIds = Array.from(new Set(participantIds));
+  const checkedOutAt = new Date();
+  const [event] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.date, todayJST()))
+    .limit(1);
+
+  if (!event || uniqueParticipantIds.length === 0) {
+    return { checkedOutAt, participants: [] };
+  }
+
+  const openSessions = await db
+    .select({
+      sessionId: sessions.id,
+      participantId: sessions.participantId,
+      nickname: participants.nickname,
+      checkedInAt: sessions.checkedInAt,
+    })
+    .from(sessions)
+    .innerJoin(participants, eq(sessions.participantId, participants.id))
+    .where(
+      and(
+        eq(sessions.eventId, event.id),
+        isNull(sessions.checkedOutAt),
+        inArray(sessions.participantId, uniqueParticipantIds),
+        eq(participants.active, true),
+      ),
+    );
+
+  if (openSessions.length === 0) {
+    return { checkedOutAt, participants: [] };
+  }
+
+  const updatedRows = await db
+    .update(sessions)
+    .set({ checkedOutAt })
+    .where(
+      and(
+        inArray(
+          sessions.id,
+          openSessions.map((session) => session.sessionId),
+        ),
+        isNull(sessions.checkedOutAt),
+      ),
+    )
+    .returning({ sessionId: sessions.id });
+
+  const updatedSessionIds = new Set(updatedRows.map((row) => row.sessionId));
+
+  return {
+    checkedOutAt,
+    participants: openSessions
+      .filter((session) => updatedSessionIds.has(session.sessionId))
+      .map((session) => ({
+        participantId: session.participantId,
+        nickname: session.nickname,
+        checkedInAt: session.checkedInAt,
+        checkedOutAt,
+        stayDurationMinutes: Math.floor(
+          (checkedOutAt.getTime() - session.checkedInAt.getTime()) / 60_000,
+        ),
+      })),
   };
 };
 

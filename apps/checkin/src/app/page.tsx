@@ -5,6 +5,7 @@ import {
   IconBug,
   IconCamera,
   IconCameraRotate,
+  IconClipboardCheck,
   IconQrcode,
   IconRefresh,
   IconUserPlus,
@@ -36,15 +37,17 @@ function ActionPanel({
   buttonVariant?: 'default' | 'outline';
 }) {
   return (
-    <Card className="flex h-full flex-col shadow-sm">
+    <Card size="sm" className="flex h-full flex-col gap-2 py-4 shadow-sm">
       <PanelHeader icon={icon} title={title} tone={tone} />
-      <CardContent className="flex flex-1 flex-col gap-4">
-        <CardDescription className="text-lg text-foreground">{description}</CardDescription>
+      <CardContent className="flex flex-1 flex-col gap-2">
+        <CardDescription className="text-sm leading-relaxed text-foreground lg:text-base">
+          {description}
+        </CardDescription>
         <div className="flex-1" />
-        <Button asChild variant={buttonVariant} size="lg" className="h-16 w-full text-xl">
+        <Button asChild variant={buttonVariant} size="lg" className="h-11 w-full text-base">
           <Link href={href}>
             {action}
-            <IconArrowRight className="size-6" data-icon="inline-end" />
+            <IconArrowRight className="size-5" data-icon="inline-end" />
           </Link>
         </Button>
       </CardContent>
@@ -137,9 +140,9 @@ export default function Home() {
   };
 
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+    <main className="flex flex-1 flex-col bg-sky-50 p-4">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col">
-        <section className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.65fr)]">
+        <section className="grid flex-1 gap-3 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.65fr)]">
           <Card className="flex h-full flex-col shadow-sm">
             <PanelHeader
               icon={<IconQrcode className="size-8" />}
@@ -192,10 +195,10 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <div className="grid h-full gap-4 lg:grid-rows-2">
+          <div className="grid h-full gap-2 sm:grid-cols-3 lg:grid-cols-1 lg:grid-rows-3">
             <ActionPanel
               title="初めての人"
-              description="IDカードをまだ持っていない人はこちら。"
+              description="IDカードがない人はこちら。"
               icon={<IconUserPlus className="size-8" />}
               tone="emerald"
               href="/first-time"
@@ -203,8 +206,17 @@ export default function Home() {
             />
 
             <ActionPanel
+              title="受付りれき"
+              description="今日の受付状況を確認します。"
+              icon={<IconClipboardCheck className="size-8" />}
+              tone="sky"
+              href="/history"
+              action="履歴を見る"
+            />
+
+            <ActionPanel
               title="マニュアル入力"
-              description="QRコードが読めないときや、スタッフが確認するときに使います。"
+              description="QRコードが読めないときはこちら。"
               icon={<IconBug className="size-8" />}
               tone="slate"
               href="/manual"

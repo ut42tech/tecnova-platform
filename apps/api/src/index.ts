@@ -7,6 +7,7 @@ import {
   checkOutRequestSchema,
   createMentorRequestSchema,
   createPreRegistrationRequestSchema,
+  historyBulkCheckOutRequestSchema,
   participantsListQuerySchema,
   scanRequestSchema,
   updateMentorRequestSchema,
@@ -33,7 +34,9 @@ import {
   type CheckinErrorCode,
   fetchParticipantProfile,
   fetchPreRegisteredList,
+  fetchReceptionHistoryToday,
   processScanValue,
+  recordBulkCheckOut,
   recordCheckIn,
   recordCheckOut,
 } from './lib/checkin';
@@ -471,6 +474,46 @@ app.post('/checkin/sessions/check-out', async (c) => {
     if (e instanceof CheckinError) {
       return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);
     }
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 受付用の当日履歴。QR が手元にない参加者のステータス確認や
+// 閉場時の一括チェックアウト導線で使う。
+app.get('/checkin/history/today', async (c) => {
+  const db = createDb(c.env);
+  try {
+    const result = await fetchReceptionHistoryToday(db);
+    return c.json(result);
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 受付用の複数チェックアウト。既に退室済みの参加者は対象外として扱い、
+// 実際に更新できたセッションだけをレスポンスに含める。
+app.post('/checkin/history/check-out-bulk', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = historyBulkCheckOutRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(invalidBodyError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const result = await recordBulkCheckOut(db, parsed.data.participantIds);
+    return c.json({
+      checkedOutAt: result.checkedOutAt.toISOString(),
+      checkedOutCount: result.participants.length,
+      participants: result.participants.map((participant) => ({
+        participantId: participant.participantId,
+        nickname: participant.nickname,
+        checkedInAt: participant.checkedInAt.toISOString(),
+        checkedOutAt: participant.checkedOutAt.toISOString(),
+        stayDurationMinutes: participant.stayDurationMinutes,
+      })),
+    });
+  } catch (e) {
     return c.json(internalError(e), 500);
   }
 });
