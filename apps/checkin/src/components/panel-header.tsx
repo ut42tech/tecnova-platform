@@ -14,21 +14,26 @@ export function PanelHeader({
   icon,
   title,
   tone,
+  trailing,
 }: {
   icon: ReactNode;
   title: string;
   tone: PanelTone;
+  trailing?: ReactNode;
 }) {
   return (
     <CardHeader className="gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div
-          aria-hidden="true"
-          className={`flex size-14 items-center justify-center rounded-full ${panelToneClasses[tone]}`}
-        >
-          {icon}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div
+            aria-hidden="true"
+            className={`flex size-14 items-center justify-center rounded-full ${panelToneClasses[tone]}`}
+          >
+            {icon}
+          </div>
+          <CardTitle className="min-w-0 text-3xl leading-tight">{title}</CardTitle>
         </div>
-        <CardTitle className="text-3xl leading-tight">{title}</CardTitle>
+        {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
     </CardHeader>
   );

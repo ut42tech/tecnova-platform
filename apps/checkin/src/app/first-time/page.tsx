@@ -4,22 +4,15 @@ import {
   IconAlertCircle,
   IconArrowRight,
   IconCalendar,
-  IconCircleCheck,
-  IconHome,
   IconRefresh,
   IconSearch,
   IconUserPlus,
   IconX,
 } from '@tabler/icons-react';
-import type {
-  ActivateResponse,
-  PreRegisteredListResponse,
-  PreRegisteredParticipant,
-} from '@tecnova/shared/schemas';
+import type { PreRegisteredListResponse } from '@tecnova/shared/schemas';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -38,16 +31,15 @@ import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/ta
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
-import { ResultSummaryCard } from '@/components/result-summary-card';
 import { apiFetch, readErrorMessage } from '@/lib/api';
-import { formatJapaneseDate, formatJapaneseDateTime } from '@/lib/format';
+import { formatJapaneseDate } from '@/lib/format';
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'list'; items: PreRegisteredParticipant[] }
-  | { kind: 'activating'; item: PreRegisteredParticipant }
-  | { kind: 'result'; data: ActivateResponse; registeredAt: string }
-  | { kind: 'error'; message: string; item?: PreRegisteredParticipant };
+  | { kind: 'list'; items: PreRegisteredListResponse['participants'] }
+  | { kind: 'error'; message: string };
+
+type PreRegisteredParticipant = PreRegisteredListResponse['participants'][number];
 
 function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
   return (
@@ -79,8 +71,8 @@ function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
 function RegistrationSteps() {
   const steps = [
     { number: '1', title: '名前をさがす', description: 'ニックネームと学年で確認' },
-    { number: '2', title: '登録前に確認', description: '本人だけを選んでID発行へ' },
-    { number: '3', title: 'カード作成', description: '表示されたIDを使う' },
+    { number: '2', title: '決まりごとを読む', description: '1つずつ確認して同意' },
+    { number: '3', title: 'IDカード作成', description: 'ID発行と初回チェックイン' },
   ];
 
   return (
@@ -125,28 +117,6 @@ export default function FirstTimePage() {
     void loadParticipants();
   }, [loadParticipants]);
 
-  const activate = async (item: PreRegisteredParticipant) => {
-    setState({ kind: 'activating', item });
-    try {
-      const r = await apiFetch('/checkin/activate', {
-        method: 'POST',
-        body: { preRegistrationId: item.preRegistrationId },
-      });
-      const body = (await r.json()) as ActivateResponse | { error: string; message: string };
-      if (!r.ok) {
-        const msg = 'message' in body ? body.message : `HTTP ${r.status}`;
-        throw new Error(msg);
-      }
-      setState({ kind: 'result', data: body as ActivateResponse, registeredAt: item.registeredAt });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-        item,
-      });
-    }
-  };
-
   const filteredItems = useMemo(() => {
     if (state.kind !== 'list') return [];
     const normalizedQuery = query.trim().toLowerCase();
@@ -187,39 +157,14 @@ export default function FirstTimePage() {
     );
   }
 
-  if (state.kind === 'activating') {
-    return (
-      <main className="flex flex-1 items-center justify-center bg-sky-50 p-4 sm:p-6">
-        <Card className="w-full max-w-xl border-emerald-200 shadow-sm">
-          <PanelHeader
-            icon={<IconRefresh className="size-8 animate-spin" />}
-            title="登録しています"
-            tone="emerald"
-          />
-          <CardContent className="flex flex-col gap-5">
-            <ParticipantDetails item={state.item} />
-            <p className="text-center text-lg font-bold text-foreground">
-              IDを発行して、今日のチェックインを記録しています。
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
   if (state.kind === 'error') {
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-rose-50 p-6 text-center">
         <Alert variant="destructive" className="max-w-xl text-left text-lg">
           <IconAlertCircle className="size-6" aria-hidden="true" />
-          <AlertTitle>{state.item ? '登録できませんでした' : '一覧を表示できません'}</AlertTitle>
+          <AlertTitle>一覧を表示できません</AlertTitle>
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
-        {state.item ? (
-          <div className="w-full max-w-xl text-left">
-            <ParticipantDetails item={state.item} />
-          </div>
-        ) : null}
         <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
           <Button
             type="button"
@@ -228,46 +173,13 @@ export default function FirstTimePage() {
             className="h-16 text-xl"
           >
             <IconRefresh className="size-6" data-icon="inline-start" />
-            {state.item ? '一覧を更新' : '再読み込み'}
+            再読み込み
           </Button>
           <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
-            <Link href="/">
-              <IconHome className="size-6" data-icon="inline-start" />
-              ホームに戻る
-            </Link>
+            <Link href="/">ホームに戻る</Link>
           </Button>
         </div>
       </main>
-    );
-  }
-
-  if (state.kind === 'result') {
-    return (
-      <ResultSummaryCard
-        title="登録できました"
-        tone="emerald"
-        icon={<IconCircleCheck className="size-8" />}
-        rows={[
-          {
-            label: 'ID',
-            value: state.data.participantId,
-            valueClassName: 'tabular-nums',
-          },
-          { label: 'ニックネーム', value: state.data.nickname },
-          { label: '学年', value: state.data.grade },
-          { label: '初回チェックイン', value: formatJapaneseDateTime(state.data.checkedInAt) },
-          { label: '事前登録日', value: formatJapaneseDate(state.registeredAt) },
-        ]}
-        note="表示されたIDでカードを作ってください"
-        footer={
-          <Button asChild size="lg" className="h-16 w-full text-xl">
-            <Link href="/">
-              <IconHome className="size-6" data-icon="inline-start" />
-              ホームに戻る
-            </Link>
-          </Button>
-        }
-      />
     );
   }
 
@@ -391,17 +303,24 @@ export default function FirstTimePage() {
                               <AlertDialogMedia className="bg-emerald-100 text-emerald-700">
                                 <IconUserPlus className="size-9" aria-hidden="true" />
                               </AlertDialogMedia>
-                              <AlertDialogTitle>{item.nickname}さんを登録しますか</AlertDialogTitle>
+                              <AlertDialogTitle>{item.nickname}さんで進みますか</AlertDialogTitle>
                               <AlertDialogDescription>
-                                登録するとIDが発行され、今日のチェックインも記録されます。
+                                次に参加ガイドラインを確認します。最後に同意するとIDが発行されます。
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <ParticipantDetails item={item} />
                             <AlertDialogFooter>
                               <AlertDialogCancel size="lg">キャンセル</AlertDialogCancel>
-                              <AlertDialogAction size="lg" onClick={() => void activate(item)}>
-                                IDを発行する
-                              </AlertDialogAction>
+                              <Button asChild size="lg">
+                                <Link
+                                  href={`/guideline?preRegistrationId=${encodeURIComponent(
+                                    item.preRegistrationId,
+                                  )}`}
+                                >
+                                  ガイドラインへ
+                                  <IconArrowRight className="size-5" data-icon="inline-end" />
+                                </Link>
+                              </Button>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
