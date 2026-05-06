@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { LINE_Seed_JP } from 'next/font/google';
 import '@tecnova/ui/globals.css';
 import { cn } from '@tecnova/ui/lib/utils';
+import { AppShell } from '@/components/app-shell';
 
 const fontSans = LINE_Seed_JP({
   variable: '--font-sans',
@@ -10,12 +11,12 @@ const fontSans = LINE_Seed_JP({
 });
 
 export const metadata: Metadata = {
-  title: 'テクノバながさき チェックイン',
+  title: 'うけつけシステム',
   // iOS Safari に PWA 起動を伝える。Web マニフェスト（app/manifest.ts）は
   // Android / Chromium 用、appleWebApp は iOS 用で両方必要。
   appleWebApp: {
     capable: true,
-    title: 'テクノバ',
+    title: 'うけつけシステム',
     statusBarStyle: 'black-translucent',
   },
 };
@@ -37,7 +38,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={cn('h-full antialiased font-sans', fontSans.variable)}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full">
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

@@ -50,9 +50,57 @@ export const checkOutResponseSchema = z.object({
   stayDurationMinutes: z.number().int().nonnegative(),
 });
 
+// `/checkin/history/check-out-bulk` のリクエスト/レスポンス
+export const historyBulkCheckOutRequestSchema = z.object({
+  participantIds: z.array(participantIdSchema).min(1).max(200),
+});
+
+export const historyBulkCheckOutItemSchema = z.object({
+  participantId: participantIdSchema,
+  nickname: z.string(),
+  checkedInAt: z.string(), // ISO 8601
+  checkedOutAt: z.string(), // ISO 8601
+  stayDurationMinutes: z.number().int().nonnegative(),
+});
+
+export const historyBulkCheckOutResponseSchema = z.object({
+  checkedOutAt: z.string(), // ISO 8601
+  checkedOutCount: z.number().int().nonnegative(),
+  participants: z.array(historyBulkCheckOutItemSchema),
+});
+
 // `/checkin/scan` のリクエスト/レスポンス（action で discriminated union）
 export const scanRequestSchema = z.object({
   scanValue: z.string(),
+});
+
+// `/checkin/participants/:participantId` のレスポンス
+export const participantProfileResponseSchema = z.object({
+  participant: z.object({
+    id: participantIdSchema,
+    nickname: z.string(),
+    grade: z.string(),
+    activatedAt: z.string(), // ISO 8601
+  }),
+  stats: z.object({
+    visitCount: z.number().int().nonnegative(),
+    lastVisitedAt: z.string().nullable(), // ISO 8601
+    totalStayDurationMinutes: z.number().int().nonnegative(),
+  }),
+  current: z.object({
+    isPresent: z.boolean(),
+    checkedInAt: z.string().nullable(), // ISO 8601
+    nextAction: z.enum(['check_in', 'check_out']),
+  }),
+  sessions: z.array(
+    z.object({
+      sessionId: z.string(),
+      checkedInAt: z.string(), // ISO 8601
+      checkedOutAt: z.string().nullable(), // ISO 8601
+      stayDurationMinutes: z.number().int().nonnegative().nullable(),
+      isPresent: z.boolean(),
+    }),
+  ),
 });
 
 export const scanResponseSchema = z.discriminatedUnion('action', [
@@ -93,6 +141,9 @@ export type CheckInRequest = z.infer<typeof checkInRequestSchema>;
 export type CheckInResponse = z.infer<typeof checkInResponseSchema>;
 export type CheckOutRequest = z.infer<typeof checkOutRequestSchema>;
 export type CheckOutResponse = z.infer<typeof checkOutResponseSchema>;
+export type HistoryBulkCheckOutRequest = z.infer<typeof historyBulkCheckOutRequestSchema>;
+export type HistoryBulkCheckOutResponse = z.infer<typeof historyBulkCheckOutResponseSchema>;
+export type ParticipantProfileResponse = z.infer<typeof participantProfileResponseSchema>;
 export type ScanRequest = z.infer<typeof scanRequestSchema>;
 export type ScanResponse = z.infer<typeof scanResponseSchema>;
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;

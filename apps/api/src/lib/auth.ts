@@ -48,8 +48,9 @@ export const createAuth = (env: Env) => {
         clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
       },
     },
-    // 管理画面（apps/admin）からの cross-origin リクエストを許可する。
-    // 開発時の `http://localhost:3001` も `TRUSTED_ORIGINS` に含めること。
+    // 管理画面（apps/admin）と受付アプリ（apps/checkin）からの cross-origin
+    // リクエストを許可する。開発時は `http://localhost:3000` と
+    // `http://localhost:3001` を `TRUSTED_ORIGINS` に含めること。
     trustedOrigins: parseTrustedOrigins(env.TRUSTED_ORIGINS),
   });
 };

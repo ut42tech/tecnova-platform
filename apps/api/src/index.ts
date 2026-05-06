@@ -7,6 +7,7 @@ import {
   checkOutRequestSchema,
   createMentorRequestSchema,
   createPreRegistrationRequestSchema,
+  historyBulkCheckOutRequestSchema,
   participantsListQuerySchema,
   scanRequestSchema,
   updateMentorRequestSchema,
@@ -31,8 +32,11 @@ import {
   activatePreRegistered,
   CheckinError,
   type CheckinErrorCode,
+  fetchParticipantProfile,
   fetchPreRegisteredList,
+  fetchReceptionHistoryToday,
   processScanValue,
+  recordBulkCheckOut,
   recordCheckIn,
   recordCheckOut,
 } from './lib/checkin';
@@ -78,9 +82,21 @@ const createDb = (env: Bindings) => drizzle(env.DB, { schema });
 const invalidBodyError = { error: 'INTERNAL' as const, message: 'invalid request body' };
 const invalidQueryError = { error: 'INTERNAL' as const, message: 'invalid query parameters' };
 
-// /checkin/* は iPad アプリから認証なしで呼ぶため、CORS は許可しておく。
-// 書き込みは sessions/participants の限定操作のみで、設計上の権限境界は保たれる。
-app.use('/checkin/*', cors());
+// /checkin/* は iPad アプリから cross-origin で呼ばれる。Better Auth の
+// セッションクッキーを同送するため、/api/* と同じ trustedOrigins + credentials
+// 前提の CORS に揃える。
+app.use(
+  '/checkin/*',
+  cors({
+    origin: (origin, c) => {
+      const allowed = parseTrustedOrigins(c.env.TRUSTED_ORIGINS);
+      return allowed.includes(origin) ? origin : null;
+    },
+    credentials: true,
+    allowHeaders: ['Content-Type'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  }),
+);
 
 // /api/* は管理画面からの呼び出し。Better Auth がセッションクッキーを発行するので
 // CORS は credentials を許可した上で trustedOrigins と整合させる。
@@ -105,12 +121,15 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c) => {
   return auth.handler(c.req.raw);
 });
 
-// /api/auth/* 以外の /api/* は認証必須。
+// /api/auth/* 以外の /api/* と /checkin/* は認証必須。
 // セッション取得 → mentors テーブル突合 で2段判定する。
 // signIn 時の許可リスト判定は OAuth コールバック側で同じ突合を行う想定だが、
 // このミドルウェアでも毎リクエスト確認することで、後から `active=false` に
 // された mentor が古いセッションで API を叩き続けるのを防ぐ。
-app.use('/api/*', async (c, next) => {
+const requireAuthenticatedMentor: MiddlewareHandler<{
+  Bindings: Bindings;
+  Variables: Variables;
+}> = async (c, next) => {
   if (c.req.path.startsWith('/api/auth/')) return next();
 
   const auth = createAuth(c.env);
@@ -148,7 +167,10 @@ app.use('/api/*', async (c, next) => {
     role: mentor.role,
   });
   await next();
-});
+};
+
+app.use('/api/*', requireAuthenticatedMentor);
+app.use('/checkin/*', requireAuthenticatedMentor);
 
 // 認証確認用：ログイン中の user / mentor 情報を返す。管理画面のフロントが
 // セッション復元の確認や上部のユーザー名表示に使う。
@@ -340,6 +362,24 @@ const internalError = (e: unknown) => ({
   message: e instanceof Error ? e.message : String(e),
 });
 
+const serializeScanResult = (result: Awaited<ReturnType<typeof processScanValue>>) => {
+  if (result.action === 'check_in') {
+    return {
+      action: 'check_in' as const,
+      sessionId: result.sessionId,
+      nickname: result.nickname,
+      checkedInAt: result.checkedInAt.toISOString(),
+    };
+  }
+  return {
+    action: 'check_out' as const,
+    nickname: result.nickname,
+    checkedInAt: result.checkedInAt.toISOString(),
+    checkedOutAt: result.checkedOutAt.toISOString(),
+    stayDurationMinutes: result.stayDurationMinutes,
+  };
+};
+
 app.get('/health', async (c) => {
   const db = drizzle(c.env.DB);
   const [row] = await db.select({ total: count() }).from(participants);
@@ -456,6 +496,114 @@ app.post('/checkin/sessions/check-out', async (c) => {
   }
 });
 
+// 受付用の当日履歴。QR が手元にない参加者のステータス確認や
+// 閉場時の一括チェックアウト導線で使う。
+app.get('/checkin/history/today', async (c) => {
+  const db = createDb(c.env);
+  try {
+    const result = await fetchReceptionHistoryToday(db);
+    return c.json(result);
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 受付用の複数チェックアウト。既に退室済みの参加者は対象外として扱い、
+// 実際に更新できたセッションだけをレスポンスに含める。
+app.post('/checkin/history/check-out-bulk', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = historyBulkCheckOutRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(invalidBodyError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const result = await recordBulkCheckOut(db, parsed.data.participantIds);
+    return c.json({
+      checkedOutAt: result.checkedOutAt.toISOString(),
+      checkedOutCount: result.participants.length,
+      participants: result.participants.map((participant) => ({
+        participantId: participant.participantId,
+        nickname: participant.nickname,
+        checkedInAt: participant.checkedInAt.toISOString(),
+        checkedOutAt: participant.checkedOutAt.toISOString(),
+        stayDurationMinutes: participant.stayDurationMinutes,
+      })),
+    });
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 受付専用の参加者プロフィール。QR/手入力後はまずここを表示し、
+// 現在の状態に応じた操作だけをフロントに出す。
+app.get('/checkin/participants/:participantId', async (c) => {
+  const participantId = c.req.param('participantId');
+  const parsed = checkInRequestSchema.safeParse({ participantId });
+  if (!parsed.success) {
+    return c.json(invalidQueryError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const profile = await fetchParticipantProfile(db, parsed.data.participantId);
+    return c.json({
+      participant: {
+        id: profile.participant.id,
+        nickname: profile.participant.nickname,
+        grade: profile.participant.grade,
+        activatedAt: profile.participant.activatedAt.toISOString(),
+      },
+      stats: {
+        visitCount: profile.stats.visitCount,
+        lastVisitedAt: profile.stats.lastVisitedAt
+          ? profile.stats.lastVisitedAt.toISOString()
+          : null,
+        totalStayDurationMinutes: profile.stats.totalStayDurationMinutes,
+      },
+      current: {
+        isPresent: profile.current.isPresent,
+        checkedInAt: profile.current.checkedInAt ? profile.current.checkedInAt.toISOString() : null,
+        nextAction: profile.current.nextAction,
+      },
+      sessions: profile.sessions.map((session) => ({
+        sessionId: session.sessionId,
+        checkedInAt: session.checkedInAt.toISOString(),
+        checkedOutAt: session.checkedOutAt ? session.checkedOutAt.toISOString() : null,
+        stayDurationMinutes: session.stayDurationMinutes,
+        isPresent: session.isPresent,
+      })),
+    });
+  } catch (e) {
+    if (e instanceof CheckinError) {
+      return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
+// 受付プロフィール画面からの実行操作。サーバー側で現在状態を再判定して、
+// check-in / check-out のどちらか一方を実行する。
+app.post('/checkin/participants/:participantId/attendance', async (c) => {
+  const participantId = c.req.param('participantId');
+  const parsed = checkInRequestSchema.safeParse({ participantId });
+  if (!parsed.success) {
+    return c.json(invalidBodyError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const result = await processScanValue(db, parsed.data.participantId);
+    return c.json(serializeScanResult(result));
+  } catch (e) {
+    if (e instanceof CheckinError) {
+      return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);
+    }
+    return c.json(internalError(e), 500);
+  }
+});
+
 // QR/バーコードスキャン用統合エンドポイント。スキャン値（5桁の participants.id）から
 // 当日の状態を判定し、check-in or check-out にディスパッチする。
 app.post('/checkin/scan', async (c) => {
@@ -468,21 +616,7 @@ app.post('/checkin/scan', async (c) => {
   const db = createDb(c.env);
   try {
     const result = await processScanValue(db, parsed.data.scanValue);
-    if (result.action === 'check_in') {
-      return c.json({
-        action: 'check_in' as const,
-        sessionId: result.sessionId,
-        nickname: result.nickname,
-        checkedInAt: result.checkedInAt.toISOString(),
-      });
-    }
-    return c.json({
-      action: 'check_out' as const,
-      nickname: result.nickname,
-      checkedInAt: result.checkedInAt.toISOString(),
-      checkedOutAt: result.checkedOutAt.toISOString(),
-      stayDurationMinutes: result.stayDurationMinutes,
-    });
+    return c.json(serializeScanResult(result));
   } catch (e) {
     if (e instanceof CheckinError) {
       return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);

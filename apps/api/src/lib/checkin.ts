@@ -1,7 +1,8 @@
 import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
-import { and, desc, eq, isNull, like } from 'drizzle-orm';
+import type { TodaySessionsResponse } from '@tecnova/shared/schemas';
+import { and, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -231,6 +232,39 @@ const requireActiveParticipant = async (
   return { id: row.id, nickname: row.nickname };
 };
 
+interface ProfileParticipant {
+  id: string;
+  nickname: string;
+  grade: string;
+  activatedAt: Date;
+}
+
+const requireProfileParticipant = async (
+  db: Db,
+  participantId: string,
+): Promise<ProfileParticipant> => {
+  const [row] = await db
+    .select({
+      id: participants.id,
+      nickname: participants.nickname,
+      grade: participants.grade,
+      activatedAt: participants.activatedAt,
+      active: participants.active,
+    })
+    .from(participants)
+    .where(eq(participants.id, participantId))
+    .limit(1);
+  if (!row?.active) {
+    throw new CheckinError('NOT_FOUND', `participant ${participantId} not found or inactive`);
+  }
+  return {
+    id: row.id,
+    nickname: row.nickname,
+    grade: row.grade,
+    activatedAt: row.activatedAt,
+  };
+};
+
 const findActiveSessionToday = async (
   db: Db,
   participantId: string,
@@ -308,6 +342,217 @@ export const recordCheckOut = async (db: Db, participantId: string): Promise<Che
     checkedInAt: open.checkedInAt,
     checkedOutAt,
     stayDurationMinutes: Math.floor((checkedOutAt.getTime() - open.checkedInAt.getTime()) / 60_000),
+  };
+};
+
+export interface ParticipantProfile {
+  participant: ProfileParticipant;
+  stats: {
+    visitCount: number;
+    lastVisitedAt: Date | null;
+    totalStayDurationMinutes: number;
+  };
+  current: {
+    isPresent: boolean;
+    checkedInAt: Date | null;
+    nextAction: 'check_in' | 'check_out';
+  };
+  sessions: Array<{
+    sessionId: string;
+    checkedInAt: Date;
+    checkedOutAt: Date | null;
+    stayDurationMinutes: number | null;
+    isPresent: boolean;
+  }>;
+}
+
+export const fetchParticipantProfile = async (
+  db: Db,
+  participantId: string,
+): Promise<ParticipantProfile> => {
+  const participant = await requireProfileParticipant(db, participantId);
+  const sessionRows = await db
+    .select({
+      id: sessions.id,
+      checkedInAt: sessions.checkedInAt,
+      checkedOutAt: sessions.checkedOutAt,
+    })
+    .from(sessions)
+    .where(eq(sessions.participantId, participantId))
+    .orderBy(desc(sessions.checkedInAt));
+
+  const [todayEvent] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.date, todayJST()))
+    .limit(1);
+  const openToday = todayEvent
+    ? await findActiveSessionToday(db, participantId, todayEvent.id)
+    : null;
+  const now = new Date();
+  const sessionsHistory = sessionRows.map((session) => {
+    const end = session.checkedOutAt ?? (session.id === openToday?.id ? now : null);
+    const stayDurationMinutes = end
+      ? Math.max(0, Math.floor((end.getTime() - session.checkedInAt.getTime()) / 60_000))
+      : null;
+    return {
+      sessionId: session.id,
+      checkedInAt: session.checkedInAt,
+      checkedOutAt: session.checkedOutAt,
+      stayDurationMinutes,
+      isPresent: session.id === openToday?.id,
+    };
+  });
+  const totalStayDurationMinutes = sessionsHistory.reduce(
+    (total, session) => total + (session.stayDurationMinutes ?? 0),
+    0,
+  );
+
+  return {
+    participant,
+    stats: {
+      visitCount: sessionRows.length,
+      lastVisitedAt: sessionRows[0]?.checkedInAt ?? null,
+      totalStayDurationMinutes,
+    },
+    current: {
+      isPresent: openToday !== null,
+      checkedInAt: openToday?.checkedInAt ?? null,
+      nextAction: openToday ? 'check_out' : 'check_in',
+    },
+    sessions: sessionsHistory,
+  };
+};
+
+export const fetchReceptionHistoryToday = async (db: Db): Promise<TodaySessionsResponse> => {
+  const [event] = await db
+    .select({ id: events.id, date: events.date })
+    .from(events)
+    .where(eq(events.date, todayJST()))
+    .limit(1);
+
+  if (!event) {
+    return {
+      event: null,
+      sessions: [],
+      summary: { totalCheckedIn: 0, currentlyPresent: 0, checkedOut: 0 },
+    };
+  }
+
+  const rows = await db
+    .select({
+      sessionId: sessions.id,
+      participantId: sessions.participantId,
+      nickname: participants.nickname,
+      grade: participants.grade,
+      checkedInAt: sessions.checkedInAt,
+      checkedOutAt: sessions.checkedOutAt,
+    })
+    .from(sessions)
+    .innerJoin(participants, eq(sessions.participantId, participants.id))
+    .where(and(eq(sessions.eventId, event.id), eq(participants.active, true)))
+    .orderBy(desc(sessions.checkedInAt));
+
+  const items = rows.map((r) => ({
+    sessionId: r.sessionId,
+    participantId: r.participantId,
+    nickname: r.nickname,
+    grade: r.grade,
+    checkedInAt: r.checkedInAt.toISOString(),
+    checkedOutAt: r.checkedOutAt ? r.checkedOutAt.toISOString() : null,
+    isPresent: r.checkedOutAt === null,
+  }));
+  const currentlyPresent = items.filter((item) => item.isPresent).length;
+
+  return {
+    event,
+    sessions: items,
+    summary: {
+      totalCheckedIn: items.length,
+      currentlyPresent,
+      checkedOut: items.length - currentlyPresent,
+    },
+  };
+};
+
+export interface BulkCheckOutResult {
+  checkedOutAt: Date;
+  participants: Array<{
+    participantId: string;
+    nickname: string;
+    checkedInAt: Date;
+    checkedOutAt: Date;
+    stayDurationMinutes: number;
+  }>;
+}
+
+export const recordBulkCheckOut = async (
+  db: Db,
+  participantIds: string[],
+): Promise<BulkCheckOutResult> => {
+  const uniqueParticipantIds = Array.from(new Set(participantIds));
+  const checkedOutAt = new Date();
+  const [event] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.date, todayJST()))
+    .limit(1);
+
+  if (!event || uniqueParticipantIds.length === 0) {
+    return { checkedOutAt, participants: [] };
+  }
+
+  const openSessions = await db
+    .select({
+      sessionId: sessions.id,
+      participantId: sessions.participantId,
+      nickname: participants.nickname,
+      checkedInAt: sessions.checkedInAt,
+    })
+    .from(sessions)
+    .innerJoin(participants, eq(sessions.participantId, participants.id))
+    .where(
+      and(
+        eq(sessions.eventId, event.id),
+        isNull(sessions.checkedOutAt),
+        inArray(sessions.participantId, uniqueParticipantIds),
+        eq(participants.active, true),
+      ),
+    );
+
+  if (openSessions.length === 0) {
+    return { checkedOutAt, participants: [] };
+  }
+
+  const updatedRows = await db
+    .update(sessions)
+    .set({ checkedOutAt })
+    .where(
+      and(
+        inArray(
+          sessions.id,
+          openSessions.map((session) => session.sessionId),
+        ),
+        isNull(sessions.checkedOutAt),
+      ),
+    )
+    .returning({ sessionId: sessions.id });
+
+  const updatedSessionIds = new Set(updatedRows.map((row) => row.sessionId));
+
+  return {
+    checkedOutAt,
+    participants: openSessions
+      .filter((session) => updatedSessionIds.has(session.sessionId))
+      .map((session) => ({
+        participantId: session.participantId,
+        nickname: session.nickname,
+        checkedInAt: session.checkedInAt,
+        checkedOutAt,
+        stayDurationMinutes: Math.floor(
+          (checkedOutAt.getTime() - session.checkedInAt.getTime()) / 60_000,
+        ),
+      })),
   };
 };
 
