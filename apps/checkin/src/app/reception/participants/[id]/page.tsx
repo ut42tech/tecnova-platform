@@ -3,6 +3,7 @@
 import {
   IconAlertCircle,
   IconArrowBack,
+  IconCalendarStats,
   IconHistory,
   IconHome,
   IconLogin2,
@@ -80,6 +81,107 @@ const postAttendance = async (participantId: string): Promise<ScanResponse> => {
 const formatHistoryDuration = (minutes: number | null, isPresent: boolean): string => {
   if (minutes === null) return '記録なし';
   return isPresent ? `${formatDuration(minutes)} 経過` : formatDuration(minutes);
+};
+
+const MIN_ATTENDANCE_TILE_COUNT = 35;
+
+const attendanceDateFormatter = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short',
+});
+
+const attendanceDateKeyFormatter = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const attendanceIntensityClasses = [
+  'border-slate-200 bg-slate-100',
+  'border-emerald-200 bg-emerald-100',
+  'border-emerald-300 bg-emerald-300',
+  'border-emerald-500 bg-emerald-500',
+  'border-emerald-700 bg-emerald-700',
+] as const;
+
+type AttendanceTile = {
+  key: string;
+  label: string;
+  stayDurationMinutes: number;
+  firstCheckedInAt: string;
+  isPresent: boolean;
+};
+
+type AttendanceTileSlot = AttendanceTile & {
+  intensity: number;
+};
+
+const formatAttendanceDateKey = (value: string): string => {
+  const parts = attendanceDateKeyFormatter.formatToParts(new Date(value));
+  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '00';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '00';
+  return `${year}-${month}-${day}`;
+};
+
+const getAttendanceIntensity = (minutes: number): number => {
+  if (minutes >= 360) return 4;
+  if (minutes >= 180) return 3;
+  if (minutes >= 60) return 2;
+  return 1;
+};
+
+const buildAttendanceTiles = (
+  sessions: ParticipantProfileResponse['sessions'],
+): AttendanceTileSlot[] => {
+  const visitsByDate = new Map<string, AttendanceTile>();
+
+  for (const session of sessions) {
+    const key = formatAttendanceDateKey(session.checkedInAt);
+    const checkedInAtMs = new Date(session.checkedInAt).getTime();
+    const stayDurationMinutes = session.stayDurationMinutes ?? 0;
+    const existing = visitsByDate.get(key);
+
+    if (!existing) {
+      visitsByDate.set(key, {
+        key,
+        label: attendanceDateFormatter.format(new Date(session.checkedInAt)),
+        stayDurationMinutes,
+        firstCheckedInAt: session.checkedInAt,
+        isPresent: session.isPresent,
+      });
+      continue;
+    }
+
+    const existingCheckedInAtMs = new Date(existing.firstCheckedInAt).getTime();
+    visitsByDate.set(key, {
+      ...existing,
+      stayDurationMinutes: existing.stayDurationMinutes + stayDurationMinutes,
+      firstCheckedInAt:
+        checkedInAtMs < existingCheckedInAtMs ? session.checkedInAt : existing.firstCheckedInAt,
+      isPresent: existing.isPresent || session.isPresent,
+    });
+  }
+
+  return Array.from(visitsByDate.values())
+    .sort((a, b) => new Date(a.firstCheckedInAt).getTime() - new Date(b.firstCheckedInAt).getTime())
+    .map((visit) => ({
+      ...visit,
+      intensity: getAttendanceIntensity(visit.stayDurationMinutes),
+    }));
+};
+
+const buildAttendanceTileSlots = (
+  visits: AttendanceTileSlot[],
+): Array<AttendanceTileSlot | null> => {
+  const tileCount = Math.max(
+    MIN_ATTENDANCE_TILE_COUNT,
+    Math.ceil(Math.max(visits.length, 1) / 7) * 7,
+  );
+  return Array.from({ length: tileCount }, (_, index) => visits[index] ?? null);
 };
 
 function LoadingScreen() {
@@ -180,39 +282,15 @@ export default function ReceptionParticipantPage() {
     ];
   }, [profile]);
 
-  const attendanceDetails = useMemo(() => {
+  const attendanceTiles = useMemo(() => {
     if (!profile) return [];
-    const currentStayDurationMinutes = profile.current.checkedInAt
-      ? Math.max(
-          0,
-          Math.floor((Date.now() - new Date(profile.current.checkedInAt).getTime()) / 60_000),
-        )
-      : null;
-    const latestSession = profile.sessions[0] ?? null;
-    const latestRecord = latestSession
-      ? latestSession.checkedOutAt
-        ? `退室 ${formatJapaneseDateTime(latestSession.checkedOutAt)}`
-        : `入室 ${formatJapaneseDateTime(latestSession.checkedInAt)}`
-      : 'まだありません';
+    return buildAttendanceTiles(profile.sessions);
+  }, [profile]);
 
-    return [
-      {
-        label: '次の操作',
-        value: isCheckIn ? 'チェックイン' : 'チェックアウト',
-      },
-      {
-        label: '現在の滞在',
-        value:
-          profile.current.isPresent && currentStayDurationMinutes !== null
-            ? formatDuration(currentStayDurationMinutes)
-            : '滞在なし',
-      },
-      {
-        label: '直近の記録',
-        value: latestRecord,
-      },
-    ];
-  }, [isCheckIn, profile]);
+  const attendanceTileSlots = useMemo(
+    () => buildAttendanceTileSlots(attendanceTiles),
+    [attendanceTiles],
+  );
 
   const submitAttendance = async () => {
     if (!profile) return;
@@ -389,22 +467,47 @@ export default function ReceptionParticipantPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-sky-100 bg-white shadow-sm">
-              <CardContent className="flex flex-col gap-4 p-5">
-                <div>
-                  <p className="text-sm font-bold text-muted-foreground">受付状況</p>
-                  <p className="mt-1 text-lg font-bold">
-                    {profile.current.isPresent ? '退室前の確認' : '入室前の確認'}
+            <Card className="h-fit border-sky-200 bg-white shadow-sm">
+              <PanelHeader
+                icon={<IconCalendarStats className="size-8" />}
+                title="来場日数"
+                tone="emerald"
+              />
+              <CardContent className="space-y-5">
+                <div className="flex items-end justify-between gap-4">
+                  <p className="text-6xl font-bold leading-none tabular-nums">
+                    {attendanceTiles.length}
+                    <span className="ml-1 text-3xl">日</span>
                   </p>
+                  <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
+                    <span>短</span>
+                    {[1, 2, 3, 4].map((intensity) => (
+                      <span
+                        key={intensity}
+                        className={`size-4 rounded-[4px] border ${attendanceIntensityClasses[intensity]}`}
+                        aria-hidden="true"
+                      />
+                    ))}
+                    <span>長</span>
+                  </div>
                 </div>
-                <div className="divide-y rounded-lg border">
-                  {attendanceDetails.map((item) => (
-                    <div key={item.label} className="flex items-start justify-between gap-4 p-3">
-                      <p className="text-sm font-bold text-muted-foreground">{item.label}</p>
-                      <p className="text-right text-base font-bold">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
+                <ul className="grid w-full list-none grid-cols-7 gap-2 p-0">
+                  {attendanceTileSlots.map((tile, index) => {
+                    const label = tile
+                      ? `${tile.label} ${formatDuration(tile.stayDurationMinutes)}${
+                          tile.isPresent ? ' 経過' : ''
+                        }`
+                      : '未記録';
+                    return (
+                      <li
+                        key={tile?.key ?? `empty-${index}`}
+                        className={`aspect-square rounded-md border ${attendanceIntensityClasses[tile?.intensity ?? 0]}`}
+                        title={label}
+                        aria-label={label}
+                      />
+                    );
+                  })}
+                </ul>
               </CardContent>
             </Card>
           </div>
