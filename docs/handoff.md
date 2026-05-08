@@ -69,6 +69,8 @@
 - Cloudflare Worker Secrets 登録済み：
   - `GOOGLE_SERVICE_ACCOUNT_KEY`（base64 エンコード済み JSON）
   - `GOOGLE_SHEETS_ID`
+  - `GAS_DRIVE_WEBHOOK_URL`
+  - `GAS_DRIVE_WEBHOOK_SECRET`
   - `BETTER_AUTH_SECRET`
   - `BETTER_AUTH_URL`
   - `GOOGLE_OAUTH_CLIENT_ID`
@@ -173,6 +175,8 @@
 ```
 GOOGLE_SERVICE_ACCOUNT_KEY=<base64>
 GOOGLE_SHEETS_ID=<sheet id>
+GAS_DRIVE_WEBHOOK_URL=<apps script web app /exec url>
+GAS_DRIVE_WEBHOOK_SECRET=<gas shared secret>
 GOOGLE_OAUTH_CLIENT_ID=<google oauth client id>
 GOOGLE_OAUTH_CLIENT_SECRET=<secret>
 BETTER_AUTH_SECRET=<openssl rand -hex 32 で生成>

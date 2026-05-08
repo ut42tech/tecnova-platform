@@ -8,13 +8,14 @@ import {
   createMentorRequestSchema,
   createPreRegistrationRequestSchema,
   historyBulkCheckOutRequestSchema,
+  participantSearchQuerySchema,
   participantsListQuerySchema,
   scanRequestSchema,
   updateMentorRequestSchema,
 } from '@tecnova/shared/schemas';
 import { and, count, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { MiddlewareHandler } from 'hono/types';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -39,7 +40,9 @@ import {
   recordBulkCheckOut,
   recordCheckIn,
   recordCheckOut,
+  searchActiveParticipantsByNickname,
 } from './lib/checkin';
+import { createParticipantDriveFolder } from './lib/drive-folder';
 import {
   createPreRegistration,
   deletePreRegistration,
@@ -52,6 +55,8 @@ type Bindings = {
   DB: D1Database;
   GOOGLE_SERVICE_ACCOUNT_KEY: string;
   GOOGLE_SHEETS_ID: string;
+  GAS_DRIVE_WEBHOOK_URL?: string;
+  GAS_DRIVE_WEBHOOK_SECRET?: string;
   GOOGLE_OAUTH_CLIENT_ID: string;
   GOOGLE_OAUTH_CLIENT_SECRET: string;
   BETTER_AUTH_SECRET: string;
@@ -362,6 +367,36 @@ const internalError = (e: unknown) => ({
   message: e instanceof Error ? e.message : String(e),
 });
 
+const queueDriveFolderCreation = (
+  c: Context<{ Bindings: Bindings; Variables: Variables }>,
+  participantId: string,
+  nickname: string,
+) => {
+  const url = c.env.GAS_DRIVE_WEBHOOK_URL?.trim();
+  const secret = c.env.GAS_DRIVE_WEBHOOK_SECRET?.trim();
+  if (!url && !secret) return;
+  if (!url || !secret) {
+    console.warn('GAS Drive webhook is partially configured; skipping folder creation');
+    return;
+  }
+
+  const promise = createParticipantDriveFolder({ url, secret, participantId, nickname })
+    .then((folder) => {
+      console.log(
+        `Drive folder ready for participant ${participantId}: ${folder.folderName} (${folder.folderId}) reused=${folder.reused}`,
+      );
+    })
+    .catch((e) => {
+      console.error(`Drive folder creation failed for participant ${participantId}:`, e);
+    });
+
+  try {
+    c.executionCtx.waitUntil(promise);
+  } catch {
+    void promise;
+  }
+};
+
 const serializeScanResult = (result: Awaited<ReturnType<typeof processScanValue>>) => {
   if (result.action === 'check_in') {
     return {
@@ -433,6 +468,7 @@ app.post('/checkin/activate', async (c) => {
       spreadsheetId: c.env.GOOGLE_SHEETS_ID,
       preRegistrationId: parsed.data.preRegistrationId,
     });
+    queueDriveFolderCreation(c, result.participantId, result.nickname);
     return c.json({
       participantId: result.participantId,
       nickname: result.nickname,
@@ -531,6 +567,23 @@ app.post('/checkin/history/check-out-bulk', async (c) => {
         stayDurationMinutes: participant.stayDurationMinutes,
       })),
     });
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// マニュアル入力画面のニックネーム検索。`:participantId` ルートより前に
+// 登録する必要があるので注意（Hono は登録順マッチ）。
+app.get('/checkin/participants/search', async (c) => {
+  const parsed = participantSearchQuerySchema.safeParse({ q: c.req.query('q') });
+  if (!parsed.success) {
+    return c.json(invalidQueryError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const items = await searchActiveParticipantsByNickname(db, parsed.data.q);
+    return c.json({ participants: items });
   } catch (e) {
     return c.json(internalError(e), 500);
   }
