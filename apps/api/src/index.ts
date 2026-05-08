@@ -8,6 +8,7 @@ import {
   createMentorRequestSchema,
   createPreRegistrationRequestSchema,
   historyBulkCheckOutRequestSchema,
+  participantSearchQuerySchema,
   participantsListQuerySchema,
   scanRequestSchema,
   updateMentorRequestSchema,
@@ -39,6 +40,7 @@ import {
   recordBulkCheckOut,
   recordCheckIn,
   recordCheckOut,
+  searchActiveParticipantsByNickname,
 } from './lib/checkin';
 import { createParticipantDriveFolder } from './lib/drive-folder';
 import {
@@ -565,6 +567,23 @@ app.post('/checkin/history/check-out-bulk', async (c) => {
         stayDurationMinutes: participant.stayDurationMinutes,
       })),
     });
+  } catch (e) {
+    return c.json(internalError(e), 500);
+  }
+});
+
+// マニュアル入力画面のニックネーム検索。`:participantId` ルートより前に
+// 登録する必要があるので注意（Hono は登録順マッチ）。
+app.get('/checkin/participants/search', async (c) => {
+  const parsed = participantSearchQuerySchema.safeParse({ q: c.req.query('q') });
+  if (!parsed.success) {
+    return c.json(invalidQueryError, 400);
+  }
+
+  const db = createDb(c.env);
+  try {
+    const items = await searchActiveParticipantsByNickname(db, parsed.data.q);
+    return c.json({ participants: items });
   } catch (e) {
     return c.json(internalError(e), 500);
   }

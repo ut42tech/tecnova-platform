@@ -74,6 +74,23 @@ export const scanRequestSchema = z.object({
   scanValue: z.string(),
 });
 
+// `/checkin/participants/search` のクエリ/レスポンス
+// マニュアル入力画面でニックネーム検索に使う。`/api/participants` と違い
+// admin 権限不要、ページネーションなし、active=true のみ。
+export const participantSearchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(40),
+});
+
+export const participantSearchItemSchema = z.object({
+  id: participantIdSchema,
+  nickname: z.string(),
+  grade: z.string(),
+});
+
+export const participantSearchResponseSchema = z.object({
+  participants: z.array(participantSearchItemSchema),
+});
+
 // `/checkin/participants/:participantId` のレスポンス
 export const participantProfileResponseSchema = z.object({
   participant: z.object({
@@ -144,6 +161,9 @@ export type CheckOutResponse = z.infer<typeof checkOutResponseSchema>;
 export type HistoryBulkCheckOutRequest = z.infer<typeof historyBulkCheckOutRequestSchema>;
 export type HistoryBulkCheckOutResponse = z.infer<typeof historyBulkCheckOutResponseSchema>;
 export type ParticipantProfileResponse = z.infer<typeof participantProfileResponseSchema>;
+export type ParticipantSearchQuery = z.infer<typeof participantSearchQuerySchema>;
+export type ParticipantSearchItem = z.infer<typeof participantSearchItemSchema>;
+export type ParticipantSearchResponse = z.infer<typeof participantSearchResponseSchema>;
 export type ScanRequest = z.infer<typeof scanRequestSchema>;
 export type ScanResponse = z.infer<typeof scanResponseSchema>;
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;

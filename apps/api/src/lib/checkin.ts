@@ -1,8 +1,8 @@
 import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
-import type { TodaySessionsResponse } from '@tecnova/shared/schemas';
-import { and, desc, eq, inArray, isNull, like } from 'drizzle-orm';
+import type { ParticipantSearchItem, TodaySessionsResponse } from '@tecnova/shared/schemas';
+import { and, asc, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -422,6 +422,26 @@ export const fetchParticipantProfile = async (
     },
     sessions: sessionsHistory,
   };
+};
+
+// マニュアル入力画面のニックネーム検索。QR が読めない場面で使うので
+// 件数は実用上の上限（同名複数 + タイポ救済）として 50 件に制限する。
+export const searchActiveParticipantsByNickname = async (
+  db: Db,
+  query: string,
+  limit = 50,
+): Promise<ParticipantSearchItem[]> => {
+  const rows = await db
+    .select({
+      id: participants.id,
+      nickname: participants.nickname,
+      grade: participants.grade,
+    })
+    .from(participants)
+    .where(and(eq(participants.active, true), like(participants.nickname, `%${query}%`)))
+    .orderBy(asc(participants.nickname), asc(participants.id))
+    .limit(limit);
+  return rows;
 };
 
 export const fetchReceptionHistoryToday = async (db: Db): Promise<TodaySessionsResponse> => {
