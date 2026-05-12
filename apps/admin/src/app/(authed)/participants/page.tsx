@@ -15,7 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
-import { ApiError, apiJson } from '@tecnova/ui/lib/api-client';
+import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
 
 type State =
@@ -24,14 +25,6 @@ type State =
   | { kind: 'error'; message: string };
 
 const PAGE_SIZE = 50;
-
-const fmtDate = (iso: string): string =>
-  new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(iso));
 
 export default function ParticipantsPage() {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -62,9 +55,7 @@ export default function ParticipantsPage() {
         );
         setState({ kind: 'ok', data });
       } catch (e) {
-        const message =
-          e instanceof ApiError ? `HTTP ${e.status}` : e instanceof Error ? e.message : String(e);
-        setState({ kind: 'error', message });
+        setState({ kind: 'error', message: apiErrorMessage(e) });
       }
     })();
   }, [debouncedSearch, page]);
@@ -120,7 +111,7 @@ export default function ParticipantsPage() {
                       <TableCell className="font-mono">{p.id}</TableCell>
                       <TableCell>{p.nickname}</TableCell>
                       <TableCell>{p.grade}</TableCell>
-                      <TableCell>{fmtDate(p.activatedAt)}</TableCell>
+                      <TableCell>{formatJstDate(p.activatedAt)}</TableCell>
                       <TableCell>
                         <Badge variant={p.active ? 'default' : 'secondary'}>
                           {p.active ? '有効' : '無効'}

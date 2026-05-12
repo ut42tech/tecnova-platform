@@ -29,31 +29,14 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
-import { ApiError, apiJson } from '@tecnova/ui/lib/api-client';
+import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { formatJstDate } from '@tecnova/ui/lib/format';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'ok'; mentors: MentorItem[] }
   | { kind: 'error'; message: string };
-
-const fmtDate = (iso: string | null): string => {
-  if (!iso) return '—';
-  return new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(iso));
-};
-
-const apiErrorMessage = (e: unknown): string => {
-  if (e instanceof ApiError) {
-    const body = e.body as { message?: string; error?: string } | undefined;
-    return body?.message ?? body?.error ?? `HTTP ${e.status}`;
-  }
-  return e instanceof Error ? e.message : String(e);
-};
 
 export default function MentorsPage() {
   const me = useMe();
@@ -275,8 +258,8 @@ function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () =>
           有効
         </Label>
       </TableCell>
-      <TableCell>{fmtDate(mentor.createdAt)}</TableCell>
-      <TableCell>{fmtDate(mentor.lastLoginAt)}</TableCell>
+      <TableCell>{formatJstDate(mentor.createdAt)}</TableCell>
+      <TableCell>{formatJstDate(mentor.lastLoginAt)}</TableCell>
       <TableCell>
         <div className="flex flex-col items-start gap-2">
           <Button type="button" size="xs" onClick={save} disabled={!dirty || busy || isSelf}>

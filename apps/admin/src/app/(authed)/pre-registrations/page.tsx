@@ -46,7 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
-import { ApiError, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
+import { ApiError, apiErrorMessage, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 
 type State =
@@ -61,14 +61,6 @@ const todayInJst = (): string =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-
-const apiErrorMessage = (e: unknown): string => {
-  if (e instanceof ApiError) {
-    const body = e.body as { message?: string; error?: string } | undefined;
-    return body?.message ?? body?.error ?? `HTTP ${e.status}`;
-  }
-  return e instanceof Error ? e.message : String(e);
-};
 
 export default function PreRegistrationsPage() {
   const me = useMe();

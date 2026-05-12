@@ -54,3 +54,14 @@ export const readErrorMessage = async (response: Response): Promise<string> => {
   const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
   return typeof body?.message === 'string' ? body.message : `HTTP ${response.status}`;
 };
+
+// catch ブロックから来る unknown を human-readable な文字列にする。
+// ApiError ならレスポンスボディの message / error を、その他なら Error.message
+// を使う。admin 各画面の try/catch で State error メッセージとして表示する想定。
+export const apiErrorMessage = (e: unknown): string => {
+  if (e instanceof ApiError) {
+    const body = e.body as { message?: string; error?: string } | undefined;
+    return body?.message ?? body?.error ?? `HTTP ${e.status}`;
+  }
+  return e instanceof Error ? e.message : String(e);
+};
