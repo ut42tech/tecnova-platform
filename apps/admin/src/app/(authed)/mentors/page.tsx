@@ -28,8 +28,8 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { ApiError, apiJson } from '@tecnova/ui/lib/api-client';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { ApiError, apiJson } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
 
 type State =

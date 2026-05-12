@@ -40,13 +40,13 @@ import { Card, CardContent } from '@tecnova/ui/components/card';
 import { Checkbox } from '@tecnova/ui/components/checkbox';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
+import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { cn } from '@tecnova/ui/lib/utils';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
-import { apiFetch, readErrorMessage } from '@/lib/api';
 import { formatJapaneseDate, formatJapaneseDateTime } from '@/lib/format';
 
 type State =

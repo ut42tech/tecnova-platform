@@ -24,12 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
-import { apiFetch, readErrorMessage } from '@/lib/api';
 import {
   formatDuration,
   formatJapaneseDateFromIso,

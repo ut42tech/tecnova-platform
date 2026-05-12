@@ -1,6 +1,13 @@
-// API クライアント共通ヘルパー。`/checkin/*` も cookie-based セッションなので
-// 必ず credentials: 'include' を付ける必要がある（apps/api 側の CORS が
-// credentials: true で設定されている前提）。
+// admin / checkin 共通の API クライアントヘルパー。
+// `/api/*` と `/checkin/*` は cookie-based セッションを前提にしているので、
+// すべての fetch に credentials: 'include' を付与する。
+// apps/api 側の CORS が credentials: true で設定されている前提。
+
+// packages/ui は @types/node を持たないため process の型を最小限で宣言する。
+// 値は Next.js が build 時に NEXT_PUBLIC_API_URL をリテラルに置換するので、
+// ここでは型情報があれば十分。
+declare const process: { env: { NEXT_PUBLIC_API_URL?: string } };
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8787';
 
 export class ApiError extends Error {
@@ -27,11 +34,6 @@ const buildInit = (init?: ApiInit): RequestInit => {
   return { ...init, headers, body, credentials: 'include' };
 };
 
-export const readErrorMessage = async (response: Response): Promise<string> => {
-  const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
-  return typeof body?.message === 'string' ? body.message : `HTTP ${response.status}`;
-};
-
 export const apiJson = async <T>(path: string, init?: ApiInit): Promise<T> => {
   const r = await fetch(`${API_URL}${path}`, buildInit(init));
   if (!r.ok) {
@@ -44,3 +46,11 @@ export const apiJson = async <T>(path: string, init?: ApiInit): Promise<T> => {
 // /api/me などレスポンスを使い分けたいときは Response を直接返す版を使う。
 export const apiFetch = (path: string, init?: ApiInit): Promise<Response> =>
   fetch(`${API_URL}${path}`, buildInit(init));
+
+// 非 OK レスポンスから人間向けメッセージを取り出すヘルパ。
+// checkin 側の各画面で `if (!r.ok) throw new Error(await readErrorMessage(r))`
+// パターンで使う。
+export const readErrorMessage = async (response: Response): Promise<string> => {
+  const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
+  return typeof body?.message === 'string' ? body.message : `HTTP ${response.status}`;
+};

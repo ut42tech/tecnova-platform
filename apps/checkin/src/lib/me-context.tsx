@@ -2,9 +2,9 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
+import { apiFetch } from '@tecnova/ui/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { apiFetch } from './api';
 
 export interface Me {
   user: { id: string; email: string; name: string };

@@ -15,8 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { ApiError, apiJson } from '@tecnova/ui/lib/api-client';
 import { useEffect, useState } from 'react';
-import { ApiError, apiJson } from '@/lib/api';
 
 type State =
   | { kind: 'loading' }

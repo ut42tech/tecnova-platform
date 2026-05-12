@@ -28,10 +28,10 @@ import { Card, CardContent, CardDescription, CardHeader } from '@tecnova/ui/comp
 import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
+import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
-import { apiFetch, readErrorMessage } from '@/lib/api';
 import { formatJapaneseDate } from '@/lib/format';
 
 type State =

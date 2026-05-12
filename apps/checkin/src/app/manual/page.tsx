@@ -16,11 +16,11 @@ import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardDescription, CardFooter } from '@tecnova/ui/components/card';
 import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
+import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { cn } from '@tecnova/ui/lib/utils';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
-import { apiFetch, readErrorMessage } from '@/lib/api';
 import { PARTICIPANT_ID_PATTERN, participantProfilePath } from '@/lib/participant-id';
 
 type Mode = 'id' | 'name';

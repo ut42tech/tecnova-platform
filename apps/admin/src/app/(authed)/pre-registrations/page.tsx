@@ -45,8 +45,8 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { ApiError, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { ApiError, apiFetch, apiJson } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
 
 type State =
