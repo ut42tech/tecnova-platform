@@ -17,6 +17,7 @@ import {
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
+import { useMe } from '@tecnova/ui/components/me-provider';
 import {
   Table,
   TableBody,
@@ -28,7 +29,6 @@ import {
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth-client';
-import { useMe } from '@/lib/me-context';
 
 export default function SettingsPage() {
   const me = useMe();

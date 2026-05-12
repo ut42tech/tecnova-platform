@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components
 import { Checkbox } from '@tecnova/ui/components/checkbox';
 import { Input } from '@tecnova/ui/components/input';
 import { Label } from '@tecnova/ui/components/label';
+import { useMe } from '@tecnova/ui/components/me-provider';
 import {
   Select,
   SelectContent,
@@ -30,7 +31,6 @@ import {
 } from '@tecnova/ui/components/table';
 import { ApiError, apiJson } from '@tecnova/ui/lib/api-client';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { useMe } from '@/lib/me-context';
 
 type State =
   | { kind: 'loading' }

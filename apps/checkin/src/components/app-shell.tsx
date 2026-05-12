@@ -2,10 +2,10 @@
 
 import { IconClipboardCheck, IconHome, IconSettings } from '@tabler/icons-react';
 import { Button } from '@tecnova/ui/components/button';
+import { MeProvider } from '@tecnova/ui/components/me-provider';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MeProvider } from '@/lib/me-context';
 
 interface Props {
   children: React.ReactNode;
@@ -20,7 +20,12 @@ export function AppShell({ children }: Props) {
   }
 
   return (
-    <MeProvider>
+    <MeProvider
+      forbiddenMessage="受付アプリの利用権限がありません"
+      loadingClassName="flex flex-1 items-center justify-center bg-sky-50 p-8"
+      forbiddenClassName="flex flex-1 flex-col items-center justify-center gap-4 bg-rose-50 p-8 text-center"
+      errorClassName="flex flex-1 flex-col items-center justify-center gap-4 bg-rose-50 p-8 text-center"
+    >
       <Chrome actions={<AuthedActions />}>{children}</Chrome>
     </MeProvider>
   );
