@@ -28,11 +28,44 @@ export const todaySessionsResponseSchema = z.object({
   }),
 });
 
+// `/api/sessions?date=YYYY-MM-DD`
+// date を省略すれば「今日」（JST）として解決する。レスポンスは
+// todaySessionsResponseSchema と同一形のため別エイリアスを置かない。
+export const sessionsByDateQuerySchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required')
+    .optional(),
+});
+
+// `/api/events`
+// ダッシュボードの日付切替セレクタが対象とする「過去にチェックインがあった日」を返す。
+// 開催日降順で、limit はデフォルト 50（直近 50 開催ぶん）。
+export const eventItemSchema = z.object({
+  id: z.string(),
+  date: z.string(), // 'YYYY-MM-DD' (JST)
+});
+export const eventsListResponseSchema = z.object({
+  events: z.array(eventItemSchema),
+});
+
 // `/api/participants`
+// 検索（ID / 氏名 / ニックネーム部分一致）+ 学年 + 有効/無効 のフィルタを受け付ける。
+// active は文字列で受けるが、'true' / 'false' のみ許容する。Zod の coerce は
+// 'false' を truthy として扱ってしまうため、preprocess で明示変換する。
 export const participantsListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
   search: z.string().trim().min(1).optional(),
+  grade: z.string().trim().min(1).optional(),
+  active: z
+    .preprocess((v) => {
+      if (v === undefined || v === null || v === '') return undefined;
+      if (v === 'true') return true;
+      if (v === 'false') return false;
+      return v;
+    }, z.boolean().optional())
+    .optional(),
 });
 
 export const participantListItemSchema = z.object({
@@ -136,6 +169,9 @@ export const createPreRegistrationRequestSchema = z.object({
 
 export type TodaySessionItem = z.infer<typeof todaySessionItemSchema>;
 export type TodaySessionsResponse = z.infer<typeof todaySessionsResponseSchema>;
+export type SessionsByDateQuery = z.infer<typeof sessionsByDateQuerySchema>;
+export type EventItem = z.infer<typeof eventItemSchema>;
+export type EventsListResponse = z.infer<typeof eventsListResponseSchema>;
 export type ParticipantsListQuery = z.infer<typeof participantsListQuerySchema>;
 export type ParticipantListItem = z.infer<typeof participantListItemSchema>;
 export type ParticipantsListResponse = z.infer<typeof participantsListResponseSchema>;

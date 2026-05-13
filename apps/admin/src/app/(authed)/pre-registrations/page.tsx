@@ -37,7 +37,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@tecnova/ui/components/select';
-import { Skeleton } from '@tecnova/ui/components/skeleton';
 import {
   Table,
   TableBody,
@@ -46,8 +45,11 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
-import { ApiError, apiErrorMessage, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
+import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
+import { ApiError, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
+import { toastError, toastSuccess } from '@tecnova/ui/lib/toast';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { PageHeader } from '@/components/page-header';
 
 type State =
   | { kind: 'loading' }
@@ -72,7 +74,10 @@ export default function PreRegistrationsPage() {
       const data = await apiJson<PreRegistrationsListResponse>('/api/pre-registrations');
       setState({ kind: 'ok', preRegistrations: data.preRegistrations });
     } catch (e) {
-      setState({ kind: 'error', message: apiErrorMessage(e) });
+      setState({
+        kind: 'error',
+        message: e instanceof Error ? e.message : String(e),
+      });
     }
   }, []);
 
@@ -94,17 +99,15 @@ export default function PreRegistrationsPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-8">
-      <section className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">事前登録管理</h2>
-      </section>
+    <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
+      <PageHeader title="事前登録管理" description="スプレッドシートに事前登録を追加・削除します" />
 
       <CreatePreRegistrationForm onCreated={load} />
 
-      {state.kind === 'loading' && <Skeleton className="h-6 w-32" />}
+      {state.kind === 'loading' && <TableSkeleton columns={6} rows={8} />}
       {state.kind === 'error' && (
         <Alert variant="destructive">
-          <AlertTitle>エラー</AlertTitle>
+          <AlertTitle>読み込めませんでした</AlertTitle>
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       )}
@@ -125,8 +128,8 @@ export default function PreRegistrationsPage() {
             <TableBody>
               {state.preRegistrations.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-6 text-center text-muted-foreground" colSpan={6}>
-                    未アクティベートの事前登録はありません
+                  <TableCell className="py-10 text-center text-muted-foreground" colSpan={6}>
+                    ID未発行の事前登録はありません
                   </TableCell>
                 </TableRow>
               ) : (
@@ -150,23 +153,30 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
   const [grade, setGrade] = useState<Grade>(DEFAULT_GRADE);
   const [registeredAt, setRegisteredAt] = useState(todayInJst());
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
-    setError(null);
     try {
-      const body: CreatePreRegistrationRequest = { fullName, nickname, grade, registeredAt };
-      await apiJson<PreRegistrationItem>('/api/pre-registrations', { method: 'POST', body });
+      const body: CreatePreRegistrationRequest = {
+        fullName,
+        nickname,
+        grade,
+        registeredAt,
+      };
+      const created = await apiJson<PreRegistrationItem>('/api/pre-registrations', {
+        method: 'POST',
+        body,
+      });
+      toastSuccess(`${created.preRegistrationId} を追加しました`);
       setFullName('');
       setNickname('');
       setGrade(DEFAULT_GRADE);
       setRegisteredAt(todayInJst());
       await onCreated();
     } catch (e) {
-      setError(apiErrorMessage(e));
+      toastError(e, '事前登録を追加できませんでした');
     } finally {
       setBusy(false);
     }
@@ -232,12 +242,6 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
               {busy ? '送信中...' : '追加'}
             </Button>
           </div>
-          {error && (
-            <Alert variant="destructive">
-              <AlertTitle>追加できませんでした</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
         </CardContent>
       </Card>
     </form>
@@ -252,13 +256,11 @@ function PreRegistrationRow({
   onDeleted: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const deleteDescription = `${item.preRegistrationId}（${item.fullName} / ${item.nickname}）を削除します。この操作は取り消せません。`;
 
   const remove = async () => {
     if (busy) return;
     setBusy(true);
-    setError(null);
     try {
       // 204 を返すので apiJson ではなく apiFetch を使う。
       const r = await apiFetch(
@@ -271,9 +273,10 @@ function PreRegistrationRow({
         const body = await r.json().catch(() => ({}));
         throw new ApiError(r.status, body);
       }
+      toastSuccess(`${item.preRegistrationId} を削除しました`);
       await onDeleted();
     } catch (e) {
-      setError(apiErrorMessage(e));
+      toastError(e, '削除できませんでした');
     } finally {
       setBusy(false);
     }
@@ -287,32 +290,25 @@ function PreRegistrationRow({
       <TableCell>{item.grade}</TableCell>
       <TableCell>{item.registeredAt}</TableCell>
       <TableCell>
-        <div className="flex flex-col items-start gap-2">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button type="button" variant="destructive" size="xs" disabled={busy}>
-                {busy ? '削除中...' : '削除'}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>事前登録を削除しますか？</AlertDialogTitle>
-                <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" onClick={remove} disabled={busy}>
-                  削除
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          {error && (
-            <Alert variant="destructive" className="max-w-xs">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="destructive" size="xs" disabled={busy}>
+              {busy ? '削除中...' : '削除'}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>事前登録を削除しますか？</AlertDialogTitle>
+              <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>キャンセル</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={remove} disabled={busy}>
+                削除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </TableCell>
     </TableRow>
   );

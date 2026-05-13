@@ -1,13 +1,16 @@
 import {
   createMentorRequestSchema,
   participantsListQuerySchema,
+  sessionsByDateQuerySchema,
   updateMentorRequestSchema,
 } from '@tecnova/shared/schemas';
 import { Hono } from 'hono';
 import {
   createMentor,
+  fetchEventsList,
   fetchMentorsList,
   fetchParticipantsList,
+  fetchSessionsForEvent,
   fetchTodaySessions,
   updateMentor,
 } from '../lib/admin';
@@ -28,14 +31,30 @@ adminRoute.get('/me', (c) =>
 
 // 当日（JST）の来場者一覧。dashboard 用。
 // 当日の event がまだ無ければ event=null と空配列を返す。
+// `/sessions` の date 省略時と同じ結果。フロント側互換のため残している。
 adminRoute.get('/sessions/today', async (c) => c.json(await fetchTodaySessions(createDb(c.env))));
 
-// 参加者一覧。ページネーション + ニックネーム部分一致検索。
+// 任意日（JST）のセッション一覧。date 省略時は今日。
+// レスポンス形は /sessions/today と同じ。
+adminRoute.get('/sessions', async (c) => {
+  const parsed = sessionsByDateQuerySchema.safeParse({ date: c.req.query('date') });
+  if (!parsed.success) {
+    return c.json(invalidQueryError, 400);
+  }
+  return c.json(await fetchSessionsForEvent(createDb(c.env), parsed.data.date ?? null));
+});
+
+// 過去開催日のセレクタ用（最新 50 件）。
+adminRoute.get('/events', async (c) => c.json(await fetchEventsList(createDb(c.env))));
+
+// 利用者一覧。ページネーション + ID / 氏名 / ニックネーム検索 + 学年 / 有効状態フィルタ。
 adminRoute.get('/participants', async (c) => {
   const parsed = participantsListQuerySchema.safeParse({
     page: c.req.query('page'),
     limit: c.req.query('limit'),
     search: c.req.query('search'),
+    grade: c.req.query('grade'),
+    active: c.req.query('active'),
   });
   if (!parsed.success) {
     return c.json(invalidQueryError, 400);
