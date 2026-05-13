@@ -1,10 +1,11 @@
 import { appendSheetRows, clearSheetRange, fetchSheetRows } from '@tecnova/shared/google-sheets';
 import type {
+  ActivatedPreRegistrationItem,
   CreatePreRegistrationRequest,
   PreRegistrationItem,
   PreRegistrationsListResponse,
 } from '@tecnova/shared/schemas';
-import { type PreRegRow, parseSheetRows, SHEET_RANGE } from './checkin';
+import { isActivatedPreRegRow, type PreRegRow, parseSheetRows, SHEET_RANGE } from './checkin';
 
 export type PreRegistrationErrorCode = 'NOT_FOUND' | 'ALREADY_ACTIVATED' | 'SHEETS_WRITE_FAILED';
 
@@ -26,16 +27,30 @@ const toItem = (row: PreRegRow): PreRegistrationItem => ({
   registeredAt: row.registeredAt,
 });
 
+const toActivatedItem = (row: PreRegRow): ActivatedPreRegistrationItem => ({
+  ...toItem(row),
+  internalId: row.internalId,
+  activatedAt: row.activatedAt,
+});
+
 export const fetchPreRegistrationsList = async (
   encodedKey: string,
   spreadsheetId: string,
 ): Promise<PreRegistrationsListResponse> => {
   const raw = await fetchSheetRows(encodedKey, spreadsheetId, SHEET_RANGE);
-  const items = parseSheetRows(raw)
-    .filter((r) => !r.activated)
+  const rows = parseSheetRows(raw);
+  const items = rows
+    .filter((r) => !isActivatedPreRegRow(r))
     .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt))
     .map(toItem);
-  return { preRegistrations: items };
+  const activatedItems = rows
+    .filter(isActivatedPreRegRow)
+    .sort(
+      (a, b) =>
+        b.activatedAt.localeCompare(a.activatedAt) || b.registeredAt.localeCompare(a.registeredAt),
+    )
+    .map(toActivatedItem);
+  return { preRegistrations: items, activatedPreRegistrations: activatedItems };
 };
 
 // `PRE-{year}-{NNNN}` 形式。year は JST 現在年、連番は当該年プレフィックスで
@@ -105,7 +120,7 @@ export const deletePreRegistration = async (
   if (!target) {
     throw new PreRegistrationError('NOT_FOUND', `pre-registration ${preRegistrationId} not found`);
   }
-  if (target.activated) {
+  if (isActivatedPreRegRow(target)) {
     throw new PreRegistrationError(
       'ALREADY_ACTIVATED',
       `${preRegistrationId} is already activated; refusing to delete`,

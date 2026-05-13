@@ -1,6 +1,8 @@
 'use client';
 
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import {
+  type ActivatedPreRegistrationItem,
   type CreatePreRegistrationRequest,
   GRADES,
   type Grade,
@@ -27,6 +29,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@tecnova/ui/components/card';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@tecnova/ui/components/collapsible';
 import { Input } from '@tecnova/ui/components/input';
 import { Label } from '@tecnova/ui/components/label';
 import { useMe } from '@tecnova/ui/components/me-provider';
@@ -53,7 +60,11 @@ import { PageHeader } from '@/components/page-header';
 
 type State =
   | { kind: 'loading' }
-  | { kind: 'ok'; preRegistrations: PreRegistrationItem[] }
+  | {
+      kind: 'ok';
+      preRegistrations: PreRegistrationItem[];
+      activatedPreRegistrations: ActivatedPreRegistrationItem[];
+    }
   | { kind: 'error'; message: string };
 
 const todayInJst = (): string =>
@@ -72,7 +83,11 @@ export default function PreRegistrationsPage() {
     setState({ kind: 'loading' });
     try {
       const data = await apiJson<PreRegistrationsListResponse>('/api/pre-registrations');
-      setState({ kind: 'ok', preRegistrations: data.preRegistrations });
+      setState({
+        kind: 'ok',
+        preRegistrations: data.preRegistrations,
+        activatedPreRegistrations: data.activatedPreRegistrations ?? [],
+      });
     } catch (e) {
       setState({
         kind: 'error',
@@ -100,7 +115,10 @@ export default function PreRegistrationsPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
-      <PageHeader title="事前登録管理" description="スプレッドシートに事前登録を追加・削除します" />
+      <PageHeader
+        title="事前登録管理"
+        description="ID未発行の事前登録を追加・削除し、ID発行済みの利用者を参照します"
+      />
 
       <CreatePreRegistrationForm onCreated={load} />
 
@@ -113,35 +131,98 @@ export default function PreRegistrationsPage() {
       )}
 
       {state.kind === 'ok' && (
-        <Card className="p-0">
+        <>
+          <Card className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>事前登録ID</TableHead>
+                  <TableHead>氏名</TableHead>
+                  <TableHead>ニックネーム</TableHead>
+                  <TableHead>学年</TableHead>
+                  <TableHead>事前登録日</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {state.preRegistrations.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="py-10 text-center text-muted-foreground" colSpan={6}>
+                      ID未発行の事前登録はありません
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  state.preRegistrations.map((p) => (
+                    <PreRegistrationRow key={p.preRegistrationId} item={p} onDeleted={load} />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <ActivatedPreRegistrationsTable items={state.activatedPreRegistrations} />
+        </>
+      )}
+    </main>
+  );
+}
+
+function ActivatedPreRegistrationsTable({ items }: { items: ActivatedPreRegistrationItem[] }) {
+  const [open, setOpen] = useState(false);
+  const label = open ? '閉じる' : '開く';
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className="gap-0 p-0">
+        <div className="flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
+          <div className="min-w-0">
+            <h2 className="font-heading text-base font-medium">ID発行済みの利用者</h2>
+          </div>
+          <CollapsibleTrigger asChild>
+            <Button type="button" variant="outline" size="sm" aria-label={label}>
+              {open ? <IconChevronDown /> : <IconChevronRight />}
+              {label}
+            </Button>
+          </CollapsibleTrigger>
+        </div>
+        <CollapsibleContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>事前登録ID</TableHead>
+                <TableHead>本登録ID</TableHead>
                 <TableHead>氏名</TableHead>
                 <TableHead>ニックネーム</TableHead>
                 <TableHead>学年</TableHead>
                 <TableHead>事前登録日</TableHead>
-                <TableHead>操作</TableHead>
+                <TableHead>ID発行日時</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {state.preRegistrations.length === 0 ? (
+              {items.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-10 text-center text-muted-foreground" colSpan={6}>
-                    ID未発行の事前登録はありません
+                  <TableCell className="py-10 text-center text-muted-foreground" colSpan={7}>
+                    ID発行済みの利用者はありません
                   </TableCell>
                 </TableRow>
               ) : (
-                state.preRegistrations.map((p) => (
-                  <PreRegistrationRow key={p.preRegistrationId} item={p} onDeleted={load} />
+                items.map((item) => (
+                  <TableRow key={item.preRegistrationId} className="align-top">
+                    <TableCell className="font-mono">{item.preRegistrationId}</TableCell>
+                    <TableCell className="font-mono">{item.internalId || '-'}</TableCell>
+                    <TableCell>{item.fullName}</TableCell>
+                    <TableCell>{item.nickname}</TableCell>
+                    <TableCell>{item.grade}</TableCell>
+                    <TableCell>{item.registeredAt}</TableCell>
+                    <TableCell>{item.activatedAt || '-'}</TableCell>
+                  </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
-        </Card>
-      )}
-    </main>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 

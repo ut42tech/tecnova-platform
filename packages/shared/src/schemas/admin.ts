@@ -153,8 +153,14 @@ export const preRegistrationItemSchema = z.object({
   registeredAt: z.string(), // 'YYYY-MM-DD' (JST)
 });
 
+export const activatedPreRegistrationItemSchema = preRegistrationItemSchema.extend({
+  internalId: z.string(),
+  activatedAt: z.string(),
+});
+
 export const preRegistrationsListResponseSchema = z.object({
   preRegistrations: z.array(preRegistrationItemSchema),
+  activatedPreRegistrations: z.array(activatedPreRegistrationItemSchema),
 });
 
 // preRegistrationId は backend が `PRE-{year}-{NNNN}` で自動採番するため、
@@ -180,5 +186,6 @@ export type MentorsListResponse = z.infer<typeof mentorsListResponseSchema>;
 export type CreateMentorRequest = z.infer<typeof createMentorRequestSchema>;
 export type UpdateMentorRequest = z.infer<typeof updateMentorRequestSchema>;
 export type PreRegistrationItem = z.infer<typeof preRegistrationItemSchema>;
+export type ActivatedPreRegistrationItem = z.infer<typeof activatedPreRegistrationItemSchema>;
 export type PreRegistrationsListResponse = z.infer<typeof preRegistrationsListResponseSchema>;
 export type CreatePreRegistrationRequest = z.infer<typeof createPreRegistrationRequestSchema>;
