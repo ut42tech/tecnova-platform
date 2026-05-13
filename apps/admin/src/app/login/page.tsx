@@ -41,11 +41,16 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex flex-1 items-center justify-center p-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">テクノバ管理画面</CardTitle>
-          <CardDescription>許可リストに登録されたメンターのみログインできます</CardDescription>
+    <main className="flex min-h-screen flex-1 items-center justify-center bg-muted/30 p-4">
+      <Card className="w-full max-w-lg">
+        <CardHeader className="gap-2">
+          <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+            テクノバながさき 運営管理
+          </p>
+          <CardTitle className="text-2xl">管理画面にログイン</CardTitle>
+          <CardDescription>
+            許可リストに登録された管理者のみログインできます。 Google アカウントで認証してください。
+          </CardDescription>
         </CardHeader>
         {error && (
           <CardContent>

@@ -2,6 +2,7 @@ import type * as schema from '@tecnova/db';
 import { events, mentors, participants, sessions } from '@tecnova/db';
 import type {
   CreateMentorRequest,
+  EventsListResponse,
   MentorItem,
   MentorsListResponse,
   ParticipantsListQuery,
@@ -9,7 +10,7 @@ import type {
   TodaySessionsResponse,
   UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
-import { asc, count, desc, eq, like, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, like, or, type SQL } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -31,9 +32,16 @@ export class MentorError extends Error {
 const todayInJst = (): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
 
-export const fetchTodaySessions = async (db: Db): Promise<TodaySessionsResponse> => {
-  const date = todayInJst();
-  const [event] = await db.select().from(events).where(eq(events.date, date)).limit(1);
+// 指定日（YYYY-MM-DD, JST）の event とそのセッション一覧を返す。
+// date が null の場合は「今日（JST）」として解決する。
+// 対象 event がまだ存在しない（誰もチェックインしていない / 開催前）の場合は
+// event=null と空配列を返す。
+export const fetchSessionsForEvent = async (
+  db: Db,
+  date: string | null,
+): Promise<TodaySessionsResponse> => {
+  const targetDate = date ?? todayInJst();
+  const [event] = await db.select().from(events).where(eq(events.date, targetDate)).limit(1);
 
   if (!event) {
     return {
@@ -81,21 +89,41 @@ export const fetchTodaySessions = async (db: Db): Promise<TodaySessionsResponse>
   };
 };
 
+// 後方互換のエイリアス。新規実装は fetchSessionsForEvent を使う。
+export const fetchTodaySessions = (db: Db): Promise<TodaySessionsResponse> =>
+  fetchSessionsForEvent(db, null);
+
+// 過去開催日のセレクタ用。events を date 降順で最新 limit 件返す。
+export const fetchEventsList = async (db: Db, limit = 50): Promise<EventsListResponse> => {
+  const rows = await db
+    .select({ id: events.id, date: events.date })
+    .from(events)
+    .orderBy(desc(events.date))
+    .limit(limit);
+  return { events: rows };
+};
+
 export const fetchParticipantsList = async (
   db: Db,
   query: ParticipantsListQuery,
 ): Promise<ParticipantsListResponse> => {
-  const { page, limit, search } = query;
-  // ニックネーム / 氏名 のいずれかに部分一致。SQLite LIKE はデフォルトで大小文字無視（ASCII のみ）。
+  const { page, limit, search, grade, active } = query;
+  // ID / 氏名 / ニックネームのいずれかに部分一致。SQLite LIKE はデフォルトで大小文字無視（ASCII のみ）。
   // 利用者は日本語想定なのでケース感度は実質影響しない。
-  const where = search
-    ? or(like(participants.nickname, `%${search}%`), like(participants.fullName, `%${search}%`))
-    : undefined;
+  const conditions: SQL[] = [];
+  if (search) {
+    const c = or(
+      like(participants.id, `%${search}%`),
+      like(participants.nickname, `%${search}%`),
+      like(participants.fullName, `%${search}%`),
+    );
+    if (c) conditions.push(c);
+  }
+  if (grade) conditions.push(eq(participants.grade, grade));
+  if (active !== undefined) conditions.push(eq(participants.active, active));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [totalRow] = await db
-    .select({ value: count() })
-    .from(participants)
-    .where(where ?? undefined);
+  const [totalRow] = await db.select({ value: count() }).from(participants).where(where);
   const total = totalRow?.value ?? 0;
 
   const rows = await db
@@ -108,7 +136,7 @@ export const fetchParticipantsList = async (
       active: participants.active,
     })
     .from(participants)
-    .where(where ?? undefined)
+    .where(where)
     .orderBy(desc(participants.activatedAt))
     .limit(limit)
     .offset((page - 1) * limit);

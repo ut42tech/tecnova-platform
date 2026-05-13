@@ -40,6 +40,9 @@ export const parseSheetRows = (rows: string[][]): PreRegRow[] =>
     }))
     .filter((r) => r.preRegistrationId);
 
+export const isActivatedPreRegRow = (row: PreRegRow): boolean =>
+  row.activated || row.internalId.trim() !== '' || row.activatedAt.trim() !== '';
+
 export const fetchPreRegisteredList = async (
   encodedKey: string,
   spreadsheetId: string,
@@ -48,7 +51,7 @@ export const fetchPreRegisteredList = async (
 > => {
   const raw = await fetchSheetRows(encodedKey, spreadsheetId, SHEET_RANGE);
   return parseSheetRows(raw)
-    .filter((r) => !r.activated)
+    .filter((r) => !isActivatedPreRegRow(r))
     .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt))
     .map(({ preRegistrationId, fullName, nickname, grade, registeredAt }) => ({
       preRegistrationId,
@@ -164,7 +167,7 @@ export const activatePreRegistered = async ({
   if (!target) {
     throw new CheckinError('NOT_FOUND', `pre-registration ${preRegistrationId} not found`);
   }
-  if (target.activated) {
+  if (isActivatedPreRegRow(target)) {
     throw new CheckinError('ALREADY_ACTIVATED', `${preRegistrationId} is already activated`);
   }
 
