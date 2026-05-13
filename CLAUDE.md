@@ -34,16 +34,18 @@
 tecnova-platform/
 ├── apps/                # エンドユーザー向けアプリ
 │   ├── api/             # Hono on Cloudflare Workers
-│   ├── checkin/         # Next.js iPad PWA
-│   ├── mentor/          # Next.js スマホPWA (Phase 1.5)
+│   ├── checkin/         # Next.js iPad PWA（受付端末）
 │   └── admin/           # Next.js 管理PC画面
 ├── packages/            # アプリ間で共有するライブラリ
 │   ├── db/              # Drizzle schema・migrations
 │   ├── shared/          # 共通型・Zodスキーマ・Sheets連携
-│   ├── ui/              # 共通UIコンポーネント (shadcn/ui)
-│   └── auth/            # Better Auth設定
+│   └── ui/              # 共通UIコンポーネント (shadcn/ui)・APIクライアント・共通フォーマッタ
 └── docs/                # 設計ドキュメント
 ```
+
+`apps/mentor`（メンタースマホPWA）は Phase 1.5 でスコープ化されるが現時点では未実装。
+Better Auth の設定は `packages/auth` ではなく `apps/api/src/lib/auth.ts` に集約している
+（リクエスト毎に instance を作る制約上、Workers の Env を直接受け取れる場所に置くのが自然なため）。
 
 **新しい機能の追加先を判断する基準：**
 
@@ -51,6 +53,7 @@ tecnova-platform/
 - 複数アプリで使う → `packages/*` のいずれか
 - DB関連 → `packages/db`
 - 型定義・Zodスキーマ・外部API連携 → `packages/shared`
+- フロント共通の UI / `apiFetch` / JST フォーマッタ / `MeProvider` → `packages/ui`
 
 ---
 
@@ -132,9 +135,9 @@ DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクシ�
 3. **`db.batch([...])` で原子的に**: `INSERT participants` + `INSERT sessions`
 4. スプシ書き戻し
 5. **失敗時の補償**: `db.batch([...])` で `DELETE sessions` → `DELETE participants` を実行
-6. PK衝突時はステップ1からリトライ（最大3回）
+6. PK 衝突時のリトライは現行未実装（`apps/api/src/lib/checkin.ts` の TODO）。当面は運用上の手動再試行で回復する
 
-詳細: [`docs/mvp.md` 6.1節](./docs/mvp.md#61-認証なしチェックインipad用) の `/checkin/activate` 処理順
+詳細: [`docs/mvp.md` 6.1節](./docs/mvp.md#61-受付端末用checkinメンター認証必須) の `/checkin/activate` 処理順
 
 ### 5. 個人情報の取り扱い
 
@@ -174,8 +177,8 @@ DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクシ�
 2. **型を定義する**（`packages/shared/src/types/` または該当アプリ内）
 3. **Zodスキーマを定義する**（`packages/shared/src/schemas/`）
 4. **DB操作が必要なら**、`packages/db` のスキーマを確認・更新
-5. **APIエンドポイントを実装**（`apps/api`）
-6. **フロント側で呼び出し**（Hono Client `hc` を使うことで型推論が効く）
+5. **APIエンドポイントを実装**（`apps/api`、`routes/` 配下にモジュール単位で）
+6. **フロント側で呼び出し**（`@tecnova/ui/lib/api-client` の `apiFetch` を使い、レスポンスは `packages/shared/src/schemas` の型でアサート）
 7. **動作確認**してから次へ
 
 ---
@@ -187,9 +190,11 @@ DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクシ�
 pnpm dev
 
 # 特定アプリのみ起動
+# 注: workspace 名は package.json の "name" を使う。フロント2つは
+# @tecnova/ プレフィックスを付けていない（checkin / admin）。
 pnpm --filter @tecnova/api dev
-pnpm --filter @tecnova/checkin dev
-pnpm --filter @tecnova/admin dev
+pnpm --filter checkin dev
+pnpm --filter admin dev
 
 # Lint & format
 pnpm biome check --write .
@@ -201,9 +206,8 @@ pnpm type-check
 pnpm --filter @tecnova/db db:generate
 
 # DB マイグレーション適用（ローカル D1 / 本番 D1）
-cd apps/api
-npx wrangler d1 migrations apply tecnova-db --local
-npx wrangler d1 migrations apply tecnova-db --remote
+pnpm --filter @tecnova/api db:apply:local
+pnpm --filter @tecnova/api db:apply:remote
 
 # Cloudflare Workers デプロイ
 pnpm --filter @tecnova/api deploy

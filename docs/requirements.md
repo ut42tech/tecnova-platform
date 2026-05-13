@@ -2,7 +2,7 @@
 
 | 項目                   | 内容                                                           |
 | ---------------------- | -------------------------------------------------------------- |
-| ドキュメントバージョン | v1.1                                                           |
+| ドキュメントバージョン | v1.2                                                           |
 | 対象システム           | テクノバながさき統合管理プラットフォーム                       |
 | 想定運用開始           | 2026年5月中旬                                                  |
 | 関連ドキュメント       | [`mvp.md`](./mvp.md)（最初の実装フェーズに集中した実装ガイド） |
@@ -277,16 +277,16 @@ sessions         1 ─── n  activity_logs (Phase 1.5)
 - API-firstを徹底。フロントエンド3種（チェックインiPad / メンタースマホ / 管理PC）が同じAPI基盤を経由
 - REST API、JSON Body
 - Hono on Cloudflare Workersで実装
-- Hono Client (`hc`) によるend-to-end型安全をモノレポ内で実現
+- 共通の Zod スキーマ（`packages/shared/src/schemas/`）をフロント/バック両方から参照することで型整合を担保（Hono Client `hc` は使わず、フロントは `apiFetch` + 共通スキーマで型アサート）
 - Phase 2の公開APIは別エンドポイント群（`/public/v1/...`）で素直に拡張可能
 
 ### 8.2 認証境界
 
-| エンドポイント群                   | 認証方式                                                  |
-| ---------------------------------- | --------------------------------------------------------- |
-| `/api/*`（メンター・管理用）       | Better Auth Google OAuth                                  |
-| `/checkin/*`（iPadチェックイン用） | 認証なし。書き込みは sessions/participants の限定操作のみ |
-| `/public/v1/*`（Phase 2）          | APIキー認証                                               |
+| エンドポイント群                   | 認証方式                                                                                              |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `/api/*`（メンター・管理用）       | Better Auth Google OAuth                                                                              |
+| `/checkin/*`（iPad受付端末用）     | Better Auth Google OAuth。受付メンターの端末で運用するため、Cookie ベースの mentor 認証必須に変更した |
+| `/public/v1/*`（Phase 2）          | APIキー認証                                                                                           |
 
 ### 8.3 主要エンドポイント概要
 
@@ -307,7 +307,8 @@ Phase 1.5以降で活動ログ・マスタ管理エンドポイントを追加�
 
 - iPadのSafariからPWA化、ホーム画面追加
 - iOSのアクセスガイド機能でアプリ固定運用
-- 主要画面: トップ（カメラビュー）／初めての方一覧／チェックイン完了／チェックアウト完了／エラー
+- 受付メンターが操作する想定で、Better Auth セッション必須
+- 主要画面: トップ（QRスキャナ＋ショートカット）／受付プロフィール（参加者詳細＋実行ボタン）／初めての方一覧／受付履歴＆一括チェックアウト／マニュアル入力（ID/名前検索）／ログイン／設定／ガイドライン
 
 ### 9.2 管理画面（PC・Web・Phase 1ミニマム→Phase 1.5拡張）
 
@@ -350,14 +351,15 @@ tecnova-platform/
 │   └── mvp.md
 ├── apps/
 │   ├── api/                     # Hono on Cloudflare Workers
-│   ├── checkin/                 # Next.js (iPad PWA)
-│   ├── mentor/                  # Next.js (スマホPWA・Phase 1.5)
+│   ├── checkin/                 # Next.js (iPad PWA・受付端末)
 │   └── admin/                   # Next.js (PC)
+│   # apps/mentor (スマホPWA) は Phase 1.5 で着手予定。現時点では未作成。
 ├── packages/
 │   ├── db/                      # Drizzle schema・migrations
-│   ├── ui/                      # 共通UIコンポーネント (shadcn/ui)
-│   ├── shared/                  # 共通型・Zodスキーマ・Sheets連携
-│   └── auth/                    # Better Auth設定
+│   ├── ui/                      # 共通UIコンポーネント (shadcn/ui)、APIクライアント、JSTフォーマッタ、MeProvider
+│   └── shared/                  # 共通型・Zodスキーマ・Sheets連携
+│   # Better Auth 設定は apps/api/src/lib/auth.ts に集約（リクエスト毎に
+│   # auth instance を作る都合上、Workers の Env を直接受け取る場所に置く）
 ├── .env.example
 ├── .gitignore
 ├── biome.json
@@ -399,7 +401,7 @@ tecnova-platform/
 - HTTPS必須（Cloudflare自動）
 - Better AuthによるセッションCookie（HttpOnly, Secure, SameSite=Lax）
 - 許可リスト方式によるOAuthアクセス制御
-- iPadチェックイン用エンドポイントは認証なしで公開するが、書き込みは sessions/participants の限定操作のみ
+- iPad受付端末用エンドポイント（`/checkin/*`）も Cookie ベースの mentor 認証必須（5月改修）。受付メンターがログインした状態で運用する前提
 - iPadはiOSアクセスガイド機能でアプリ固定、子どもの誤操作を防ぐ
 - Google Sheets APIアクセスはサービスアカウント経由、必要最小限のスコープに限定
 
