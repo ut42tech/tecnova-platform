@@ -232,12 +232,13 @@ async function getOrCreateTodayEvent(
 | 列  | カラム名           | 型       | 説明                               | 編集権限     |
 | --- | ------------------ | -------- | ---------------------------------- | ------------ |
 | A   | 事前登録ID         | text     | PRE-2026-0001 形式                 | 教員側       |
-| B   | ニックネーム       | text     |                                    | 教員側       |
-| C   | 学年               | text     | 小1, 小4, 中2 等                   | 教員側       |
-| D   | 事前登録日         | date     | YYYY-MM-DD                         | 教員側       |
-| E   | 内製ID             | text     | 26001 等（バックエンドが書き込み） | バックエンド |
-| F   | アクティベート日時 | datetime | YYYY-MM-DD HH:mm:ss（同上）        | バックエンド |
-| G   | アクティベート済   | boolean  | TRUE/FALSE（同上）                 | バックエンド |
+| B   | 氏名               | text     | 本名（識別補助）                   | 教員側       |
+| C   | ニックネーム       | text     | メイン識別子                       | 教員側       |
+| D   | 学年               | text     | 小1, 小4, 中2 等                   | 教員側       |
+| E   | 事前登録日         | date     | YYYY-MM-DD                         | 教員側       |
+| F   | 内製ID             | text     | 26001 等（バックエンドが書き込み） | バックエンド |
+| G   | アクティベート日時 | datetime | YYYY-MM-DD HH:mm:ss（同上）        | バックエンド |
+| H   | アクティベート済   | boolean  | TRUE/FALSE（同上）                 | バックエンド |
 
 1行目はヘッダー、2行目以降がデータ。
 
@@ -245,15 +246,15 @@ async function getOrCreateTodayEvent(
 
 **読み取り**:
 
-- `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!A2:G` で全データ取得
-- レスポンスを配列にパースし、Gが `FALSE` または空のレコードをフィルタ
+- `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!A2:H` で全データ取得
+- レスポンスを配列にパースし、Hが `FALSE` または空のレコードをフィルタ
 - 5秒キャッシュ（Workers Cache APIまたはmoduleスコープのMap）
 
 **書き込み**:
 
-- アクティベート時、対象行のE/F/G列を更新
+- アクティベート時、対象行のF/G/H列を更新
 - 行番号は読み取り時のインデックスから特定（Aの順序に依存するためソート不可）
-- `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!E{row}:G{row}?valueInputOption=USER_ENTERED` で3列まとめて更新
+- `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!F{row}:H{row}?valueInputOption=USER_ENTERED` で3列まとめて更新
 - リクエストボディ: `{ "values": [["26001", "2026-05-15 09:32:15", "TRUE"]] }`
 
 ### 5.3 サービスアカウント設定
@@ -296,9 +297,9 @@ Script）の Web App エンドポイント経由で作成する。
   `{ ok: true, folderId, folderName, reused }` を返す。
 - 必要な Secret は 2 つ:
 
-  | 変数名                     | 説明                                                                 |
-  | -------------------------- | -------------------------------------------------------------------- |
-  | `GAS_DRIVE_WEBHOOK_URL`    | GAS Web App の `/exec` URL                                           |
+  | 変数名                     | 説明                                                                   |
+  | -------------------------- | ---------------------------------------------------------------------- |
+  | `GAS_DRIVE_WEBHOOK_URL`    | GAS Web App の `/exec` URL                                             |
   | `GAS_DRIVE_WEBHOOK_SECRET` | GAS 側と共有する任意のシークレット文字列（リクエストボディに同梱する） |
 
   両方が未設定の場合は機能ごと無効化される（`url && secret` が揃わないと no-op）。
@@ -402,9 +403,9 @@ D1 にはインタラクティブ・トランザクションがないため、�
 2. 内製ID採番（`generateNextParticipantId`）
 3. event_id を取得 or 作成（`getOrCreateTodayEvent`）
 4. **`db.batch([...])` で原子的に書き込み**:
-   - `INSERT participants`（id, preRegistrationId, nickname, grade）
+   - `INSERT participants`（id, preRegistrationId, fullName, nickname, grade）
    - `INSERT sessions`（participantId, eventId, checkedInAt）
-5. スプシ書き戻し（E/F/G列を更新）
+5. スプシ書き戻し（F/G/H列を更新）
 6. **スプシ書き戻し失敗時は補償処理**:
    - `db.batch([...])` で `DELETE sessions` → `DELETE participants` を実行
    - クライアントには `SHEETS_WRITE_FAILED` を返す
@@ -545,9 +546,7 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 
 ```json
 {
-  "participants": [
-    { "id": "26001", "nickname": "たくや", "grade": "小4" }
-  ]
+  "participants": [{ "id": "26001", "nickname": "たくや", "grade": "小4" }]
 }
 ```
 
@@ -563,7 +562,9 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 ```json
 {
   "participant": {
-    "id": "26001", "nickname": "たくや", "grade": "小4",
+    "id": "26001",
+    "nickname": "たくや",
+    "grade": "小4",
     "activatedAt": "2026-04-20T09:10:00+09:00"
   },
   "stats": {
@@ -1010,7 +1011,7 @@ export default defineConfig({
 - [ ] スプシに登録された事前登録者が登録日新しい順に並ぶ
 - [ ] カードをタップするとアクティベートされ、内製IDが画面に表示される
 - [ ] 内製DBに participants と sessions レコードが作成される
-- [ ] スプシのE/F/G列が正しく更新される
+- [ ] スプシのF/G/H列が正しく更新される
 - [ ] アクティベート済みの参加者は次回以降一覧に表示されない
 
 #### 通常チェックイン/アウト
