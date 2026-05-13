@@ -207,17 +207,17 @@ function NameSearchPanel() {
       <PanelHeader icon={<IconSearch className="size-8" />} title="名前で探す" tone="slate" />
       <CardContent className="flex flex-col gap-4">
         <CardDescription className="text-lg text-foreground">
-          ニックネームの一部を入力すると、候補が一覧で表示されます。
+          ニックネームか氏名の一部を入力すると、候補が一覧で表示されます。
         </CardDescription>
         <Input
-          aria-label="ニックネーム"
+          aria-label="ニックネーム・氏名"
           type="search"
           autoComplete="off"
           autoFocus
           disabled={navigatingId !== null}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="例: テッくん"
+          placeholder="例: テッくん / 田中太郎"
           className="h-16 rounded-lg bg-white px-5 text-2xl"
         />
         <SearchResults
@@ -331,6 +331,7 @@ function ResultRow({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-xl font-bold leading-tight">{participant.nickname}</p>
+        <p className="truncate text-sm font-bold text-muted-foreground">{participant.fullName}</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           <Badge
             variant="secondary"

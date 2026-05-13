@@ -69,7 +69,7 @@ export default function ParticipantsPage() {
         <h2 className="text-lg font-semibold">参加者一覧</h2>
         <Input
           type="search"
-          placeholder="ニックネームで検索"
+          placeholder="ニックネーム・氏名で検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
@@ -92,6 +92,7 @@ export default function ParticipantsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
+                  <TableHead>氏名</TableHead>
                   <TableHead>ニックネーム</TableHead>
                   <TableHead>学年</TableHead>
                   <TableHead>アクティベート日</TableHead>
@@ -101,7 +102,7 @@ export default function ParticipantsPage() {
               <TableBody>
                 {state.data.participants.length === 0 ? (
                   <TableRow>
-                    <TableCell className="py-6 text-center text-muted-foreground" colSpan={5}>
+                    <TableCell className="py-6 text-center text-muted-foreground" colSpan={6}>
                       該当データがありません
                     </TableCell>
                   </TableRow>
@@ -109,6 +110,7 @@ export default function ParticipantsPage() {
                   state.data.participants.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono">{p.id}</TableCell>
+                      <TableCell>{p.fullName}</TableCell>
                       <TableCell>{p.nickname}</TableCell>
                       <TableCell>{p.grade}</TableCell>
                       <TableCell>{formatJstDate(p.activatedAt)}</TableCell>

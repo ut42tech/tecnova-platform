@@ -235,6 +235,7 @@ export default function HistoryPage() {
         return (
           session.participantId.includes(normalizedQuery) ||
           session.nickname.toLowerCase().includes(normalizedQuery) ||
+          session.fullName.toLowerCase().includes(normalizedQuery) ||
           session.grade.toLowerCase().includes(normalizedQuery)
         );
       })
@@ -385,7 +386,7 @@ export default function HistoryPage() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="ID・ニックネーム・学年で検索"
+                placeholder="ID・ニックネーム・氏名・学年で検索"
                 className="h-14 rounded-lg bg-white px-5 text-lg"
               />
               <div className="grid gap-3 sm:grid-cols-2 lg:flex">
@@ -464,6 +465,9 @@ export default function HistoryPage() {
                             <div className="flex min-w-0 flex-col gap-1">
                               <span className="break-words text-lg font-bold">
                                 {session.nickname}
+                              </span>
+                              <span className="break-words text-sm font-bold text-muted-foreground">
+                                {session.fullName}
                               </span>
                               <span className="text-sm font-bold text-muted-foreground">
                                 <span className="tabular-nums">ID {session.participantId}</span>

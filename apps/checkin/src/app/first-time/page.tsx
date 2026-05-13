@@ -47,6 +47,10 @@ function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
       <Table>
         <TableBody className="text-base sm:text-lg">
           <TableRow>
+            <TableCell className="w-36 bg-muted/40 font-bold text-muted-foreground">氏名</TableCell>
+            <TableCell className="break-words font-bold">{item.fullName}</TableCell>
+          </TableRow>
+          <TableRow>
             <TableCell className="w-36 bg-muted/40 font-bold text-muted-foreground">
               ニックネーム
             </TableCell>
@@ -70,9 +74,21 @@ function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
 
 function RegistrationSteps() {
   const steps = [
-    { number: '1', title: '名前をさがす', description: 'ニックネームと学年で確認' },
-    { number: '2', title: '決まりごとを読む', description: '1つずつ確認して同意' },
-    { number: '3', title: 'IDカード作成', description: 'ID発行と初回チェックイン' },
+    {
+      number: '1',
+      title: '名前をさがす',
+      description: 'ニックネームと学年で確認',
+    },
+    {
+      number: '2',
+      title: '決まりごとを読む',
+      description: '1つずつ確認して同意',
+    },
+    {
+      number: '3',
+      title: 'IDカード作成',
+      description: 'ID発行と初回チェックイン',
+    },
   ];
 
   return (
@@ -123,6 +139,7 @@ export default function FirstTimePage() {
     if (!normalizedQuery) return state.items;
     return state.items.filter((item) => {
       const values = [
+        item.fullName,
         item.nickname,
         item.grade,
         item.registeredAt,
@@ -225,7 +242,7 @@ export default function FirstTimePage() {
                       type="search"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
-                      placeholder="ニックネーム・学年・登録日で検索"
+                      placeholder="氏名・ニックネーム・学年・登録日で検索"
                       className="h-14 rounded-lg bg-white pr-5 pl-12 text-lg"
                     />
                   </div>
@@ -277,6 +294,9 @@ export default function FirstTimePage() {
                               <span className="flex min-w-0 flex-col gap-2">
                                 <span className="break-words text-2xl font-black leading-tight">
                                   {item.nickname}
+                                </span>
+                                <span className="break-words text-base font-bold text-muted-foreground">
+                                  {item.fullName}
                                 </span>
                                 <span className="flex items-center gap-2 text-base text-muted-foreground">
                                   <IconCalendar className="size-5 shrink-0" aria-hidden="true" />

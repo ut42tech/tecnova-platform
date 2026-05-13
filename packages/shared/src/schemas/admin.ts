@@ -4,6 +4,7 @@ import { z } from 'zod';
 export const todaySessionItemSchema = z.object({
   sessionId: z.string(),
   participantId: z.string(),
+  fullName: z.string(),
   nickname: z.string(),
   grade: z.string(),
   checkedInAt: z.string(), // ISO 8601 (UTC)
@@ -36,6 +37,7 @@ export const participantsListQuerySchema = z.object({
 
 export const participantListItemSchema = z.object({
   id: z.string(),
+  fullName: z.string(),
   nickname: z.string(),
   grade: z.string(),
   activatedAt: z.string(), // ISO 8601 (UTC)
@@ -112,6 +114,7 @@ export const gradeSchema = z.enum(GRADES);
 // 独立の契約として保ち、将来表示項目を増やす余地を残す。
 export const preRegistrationItemSchema = z.object({
   preRegistrationId: z.string(),
+  fullName: z.string(),
   nickname: z.string(),
   grade: z.string(),
   registeredAt: z.string(), // 'YYYY-MM-DD' (JST)
@@ -125,6 +128,7 @@ export const preRegistrationsListResponseSchema = z.object({
 // リクエストには含めない（fool proof: admin の手入力ミスを防ぐ）。
 // grade は GRADES の enum で弾く（小1〜高3 以外を受け付けない）。
 export const createPreRegistrationRequestSchema = z.object({
+  fullName: z.string().trim().min(1).max(80),
   nickname: z.string().trim().min(1).max(40),
   grade: gradeSchema,
   registeredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required'),

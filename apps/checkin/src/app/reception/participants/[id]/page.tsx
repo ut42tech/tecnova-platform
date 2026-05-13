@@ -307,12 +307,14 @@ export default function ReceptionParticipantPage() {
       data.action === 'check_in'
         ? [
             { label: 'ID', value: participantId, valueClassName: 'tabular-nums' },
+            { label: '氏名', value: data.fullName },
             { label: 'ニックネーム', value: data.nickname },
             { label: '結果', value: 'チェックインしました' },
             { label: 'チェックイン時刻', value: formatJapaneseDateTime(data.checkedInAt) },
           ]
         : [
             { label: 'ID', value: participantId, valueClassName: 'tabular-nums' },
+            { label: '氏名', value: data.fullName },
             { label: 'ニックネーム', value: data.nickname },
             { label: '結果', value: 'チェックアウトしました' },
             { label: '滞在時間', value: formatDuration(data.stayDurationMinutes) },
@@ -352,6 +354,9 @@ export default function ReceptionParticipantPage() {
                     <CardTitle className="break-words text-4xl leading-tight sm:text-5xl">
                       {profile.participant.nickname}
                     </CardTitle>
+                    <p className="mt-1 break-words text-lg font-bold text-muted-foreground">
+                      {profile.participant.fullName}
+                    </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Badge
                         variant="secondary"

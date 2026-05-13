@@ -20,6 +20,7 @@ export class PreRegistrationError extends Error {
 
 const toItem = (row: PreRegRow): PreRegistrationItem => ({
   preRegistrationId: row.preRegistrationId,
+  fullName: row.fullName,
   nickname: row.nickname,
   grade: row.grade,
   registeredAt: row.registeredAt,
@@ -69,11 +70,12 @@ export const createPreRegistration = async (
   const rows = parseSheetRows(raw);
   const preRegistrationId = generateNextPreRegistrationId(rows);
 
-  // A〜D列のみ（E:F:G はバックエンドが activate 時に書き込む列なので空のまま）。
+  // A〜E列のみ（F:G:H はバックエンドが activate 時に書き込む列なので空のまま）。
+  // 列構成: A=preRegId / B=氏名 / C=ニックネーム / D=学年 / E=事前登録日
   // appendSheetRows は INSERT_ROWS で挿入するので、クリア跡の空行を上書きしない。
   try {
-    await appendSheetRows(encodedKey, spreadsheetId, 'participants!A:D', [
-      [preRegistrationId, input.nickname, input.grade, input.registeredAt],
+    await appendSheetRows(encodedKey, spreadsheetId, 'participants!A:E', [
+      [preRegistrationId, input.fullName, input.nickname, input.grade, input.registeredAt],
     ]);
   } catch (e) {
     throw new PreRegistrationError(
@@ -84,6 +86,7 @@ export const createPreRegistration = async (
 
   return {
     preRegistrationId,
+    fullName: input.fullName,
     nickname: input.nickname,
     grade: input.grade,
     registeredAt: input.registeredAt,
@@ -113,7 +116,7 @@ export const deletePreRegistration = async (
     await clearSheetRange(
       encodedKey,
       spreadsheetId,
-      `participants!A${target.rowNumber}:G${target.rowNumber}`,
+      `participants!A${target.rowNumber}:H${target.rowNumber}`,
     );
   } catch (e) {
     throw new PreRegistrationError(

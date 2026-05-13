@@ -239,3 +239,60 @@ Vercel URL を両方 Worker secret に登録済み。
 - **CLI ツールはローカル devDep**：wrangler 等をグローバルに入れない
 - **Public リポジトリ運用**：シークレット類は `wrangler secret put` または
   Vercel 環境変数。`.env.example` には変数名のみ
+
+---
+
+## 氏名（fullName）追加リリース手順（2026-05-13 着手）
+
+参加者データに **氏名（本名）** を追加した。学生側スプシは **B列に氏名を挿入** し、既存
+列を1つずつ右にシフト（A=preRegId / B=氏名 / C=ニックネーム / D=学年 / E=事前登録日 /
+F=内製ID / G=アクティベート日時 / H=アクティベート済）。
+
+DBは `participants.full_name` を NOT NULL DEFAULT '' で追加。既存行は backfill する。
+
+**重要**: 新コード（A2:H 前提）が旧スプシ（A2:G）を読むと列マッピングがズレて読み書きが
+崩壊する。**必ず以下の順序で実施する**。途中で運用中の iPad / 管理画面からアクセスが
+あると不整合が出るのでメンテ枠を取る。
+
+### デプロイ順序
+
+1. **メンテモード**（運用停止時間枠を確保。iPad / admin から触らない）
+2. **学生側スプシを手動更新**:
+   1. `participants` シートで **B 列を挿入**（既存 B〜G が C〜H にシフトされる）
+   2. B1 セルに `氏名` ヘッダーを入力
+   3. 既存全行 B 列に教員管理スプシから氏名を転記（事前登録ID をキーに突合）
+3. **DB マイグレーション適用（remote）**:
+   ```bash
+   pnpm --filter @tecnova/api db:apply:remote
+   ```
+   `0002_early_network.sql` が `ALTER TABLE participants ADD full_name TEXT DEFAULT ''
+   NOT NULL` を適用する。
+4. **DB backfill**: スプシ B 列に入れた氏名を DB の `participants.full_name` に流す。
+   既存件数が少ないので 1 件ずつ手書きの SQL で十分:
+   ```bash
+   cd apps/api
+   npx wrangler d1 execute <DB_NAME> --remote --command "UPDATE participants SET full_name = '田中太郎' WHERE id = '26001'"
+   # ... 全件分繰り返す
+   ```
+   件数が増えてきたら `wrangler d1 execute --file backfill.sql` で一括投入する方が早い。
+5. **新コードをデプロイ**:
+   - api: `pnpm --filter @tecnova/api deploy`
+   - admin / checkin: 通常の Vercel デプロイ（main マージで自動）
+   - 順序は api → 各フロント。フロントは古い fullName 無しのレスポンスを Zod でリジェクト
+     するため、api が先に新形式を返す状態にしてから上げる
+6. **動作確認**:
+   - admin 事前登録の新規追加で 氏名・ニックネーム・学年・事前登録日 が入る
+   - スプシ A〜E 列に新規行が `preRegId / 氏名 / ニックネーム / 学年 / 事前登録日`
+     順で書き込まれていること
+   - iPad の「初めての方」一覧で氏名が表示されること
+   - 活性化後にスプシ F/G/H 列に internalId / activatedAt / TRUE が書かれていること
+   - QRスキャンで チェックイン/アウト の結果カードに氏名が出ること
+7. **メンテモード解除**
+
+### ロールバック手順
+
+- 万一フロントが落ちた場合、api は古いフロントとは互換しない（フロントが fullName
+  必須を期待）。**api を先に旧バージョンに戻す → スプシの B 列を再削除 → DB
+  migration を down**（drizzle-kit が生成する down SQL は無いので、`ALTER TABLE
+  participants DROP COLUMN full_name` を手書き）→ フロントを戻す、の順。
+- スプシ B 列を消す前にバックアップ（シート複製）を取ること。

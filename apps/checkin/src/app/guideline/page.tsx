@@ -335,6 +335,10 @@ function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
       <Table>
         <TableBody className="text-base sm:text-lg">
           <TableRow>
+            <TableCell className="w-36 bg-muted/40 font-bold text-muted-foreground">氏名</TableCell>
+            <TableCell className="break-words font-bold">{item.fullName}</TableCell>
+          </TableRow>
+          <TableRow>
             <TableCell className="w-36 bg-muted/40 font-bold text-muted-foreground">
               ニックネーム
             </TableCell>
@@ -720,6 +724,7 @@ function GuidelinePageContent() {
             value: state.data.participantId,
             valueClassName: 'tabular-nums',
           },
+          { label: '氏名', value: state.data.fullName },
           { label: 'ニックネーム', value: state.data.nickname },
           { label: '学年', value: state.data.grade },
           {

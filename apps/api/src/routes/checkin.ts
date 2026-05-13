@@ -58,12 +58,14 @@ const serializeScanResult = (result: Awaited<ReturnType<typeof processScanValue>
     return {
       action: 'check_in' as const,
       sessionId: result.sessionId,
+      fullName: result.fullName,
       nickname: result.nickname,
       checkedInAt: result.checkedInAt.toISOString(),
     };
   }
   return {
     action: 'check_out' as const,
+    fullName: result.fullName,
     nickname: result.nickname,
     checkedInAt: result.checkedInAt.toISOString(),
     checkedOutAt: result.checkedOutAt.toISOString(),
@@ -97,6 +99,7 @@ checkinRoute.post('/activate', async (c) => {
   queueDriveFolderCreation(c, result.participantId, result.nickname);
   return c.json({
     participantId: result.participantId,
+    fullName: result.fullName,
     nickname: result.nickname,
     grade: result.grade,
     checkedInAt: result.checkedInAt.toISOString(),
@@ -113,6 +116,7 @@ checkinRoute.post('/sessions/check-in', async (c) => {
   const result = await recordCheckIn(createDb(c.env), parsed.data.participantId);
   return c.json({
     sessionId: result.sessionId,
+    fullName: result.fullName,
     nickname: result.nickname,
     checkedInAt: result.checkedInAt.toISOString(),
   });
@@ -127,6 +131,7 @@ checkinRoute.post('/sessions/check-out', async (c) => {
   }
   const result = await recordCheckOut(createDb(c.env), parsed.data.participantId);
   return c.json({
+    fullName: result.fullName,
     nickname: result.nickname,
     checkedInAt: result.checkedInAt.toISOString(),
     checkedOutAt: result.checkedOutAt.toISOString(),
@@ -154,6 +159,7 @@ checkinRoute.post('/history/check-out-bulk', async (c) => {
     checkedOutCount: result.participants.length,
     participants: result.participants.map((participant) => ({
       participantId: participant.participantId,
+      fullName: participant.fullName,
       nickname: participant.nickname,
       checkedInAt: participant.checkedInAt.toISOString(),
       checkedOutAt: participant.checkedOutAt.toISOString(),
@@ -185,6 +191,7 @@ checkinRoute.get('/participants/:participantId', async (c) => {
   return c.json({
     participant: {
       id: profile.participant.id,
+      fullName: profile.participant.fullName,
       nickname: profile.participant.nickname,
       grade: profile.participant.grade,
       activatedAt: profile.participant.activatedAt.toISOString(),

@@ -6,6 +6,7 @@ const participantIdSchema = z.string().regex(/^\d{5}$/);
 // `/checkin/pre-registered` のレスポンス
 export const preRegisteredParticipantSchema = z.object({
   preRegistrationId: z.string(),
+  fullName: z.string(),
   nickname: z.string(),
   grade: z.string(),
   registeredAt: z.string(), // 'YYYY-MM-DD'
@@ -22,6 +23,7 @@ export const activateRequestSchema = z.object({
 
 export const activateResponseSchema = z.object({
   participantId: z.string(),
+  fullName: z.string(),
   nickname: z.string(),
   grade: z.string(),
   checkedInAt: z.string(), // ISO 8601
@@ -34,6 +36,7 @@ export const checkInRequestSchema = z.object({
 
 export const checkInResponseSchema = z.object({
   sessionId: z.string(),
+  fullName: z.string(),
   nickname: z.string(),
   checkedInAt: z.string(), // ISO 8601
 });
@@ -44,6 +47,7 @@ export const checkOutRequestSchema = z.object({
 });
 
 export const checkOutResponseSchema = z.object({
+  fullName: z.string(),
   nickname: z.string(),
   checkedInAt: z.string(),
   checkedOutAt: z.string(),
@@ -57,6 +61,7 @@ export const historyBulkCheckOutRequestSchema = z.object({
 
 export const historyBulkCheckOutItemSchema = z.object({
   participantId: participantIdSchema,
+  fullName: z.string(),
   nickname: z.string(),
   checkedInAt: z.string(), // ISO 8601
   checkedOutAt: z.string(), // ISO 8601
@@ -83,6 +88,7 @@ export const participantSearchQuerySchema = z.object({
 
 export const participantSearchItemSchema = z.object({
   id: participantIdSchema,
+  fullName: z.string(),
   nickname: z.string(),
   grade: z.string(),
 });
@@ -95,6 +101,7 @@ export const participantSearchResponseSchema = z.object({
 export const participantProfileResponseSchema = z.object({
   participant: z.object({
     id: participantIdSchema,
+    fullName: z.string(),
     nickname: z.string(),
     grade: z.string(),
     activatedAt: z.string(), // ISO 8601
@@ -124,11 +131,13 @@ export const scanResponseSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('check_in'),
     sessionId: z.string(),
+    fullName: z.string(),
     nickname: z.string(),
     checkedInAt: z.string(),
   }),
   z.object({
     action: z.literal('check_out'),
+    fullName: z.string(),
     nickname: z.string(),
     checkedInAt: z.string(),
     checkedOutAt: z.string(),

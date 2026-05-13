@@ -9,7 +9,7 @@ import type {
   TodaySessionsResponse,
   UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
-import { asc, count, desc, eq, like } from 'drizzle-orm';
+import { asc, count, desc, eq, like, or } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -47,6 +47,7 @@ export const fetchTodaySessions = async (db: Db): Promise<TodaySessionsResponse>
     .select({
       sessionId: sessions.id,
       participantId: sessions.participantId,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       grade: participants.grade,
       checkedInAt: sessions.checkedInAt,
@@ -60,6 +61,7 @@ export const fetchTodaySessions = async (db: Db): Promise<TodaySessionsResponse>
   const items = rows.map((r) => ({
     sessionId: r.sessionId,
     participantId: r.participantId,
+    fullName: r.fullName,
     nickname: r.nickname,
     grade: r.grade,
     checkedInAt: r.checkedInAt.toISOString(),
@@ -84,9 +86,11 @@ export const fetchParticipantsList = async (
   query: ParticipantsListQuery,
 ): Promise<ParticipantsListResponse> => {
   const { page, limit, search } = query;
-  // ニックネーム部分一致。SQLite LIKE はデフォルトで大小文字無視（ASCII のみ）。
+  // ニックネーム / 氏名 のいずれかに部分一致。SQLite LIKE はデフォルトで大小文字無視（ASCII のみ）。
   // 利用者は日本語想定なのでケース感度は実質影響しない。
-  const where = search ? like(participants.nickname, `%${search}%`) : undefined;
+  const where = search
+    ? or(like(participants.nickname, `%${search}%`), like(participants.fullName, `%${search}%`))
+    : undefined;
 
   const [totalRow] = await db
     .select({ value: count() })
@@ -97,6 +101,7 @@ export const fetchParticipantsList = async (
   const rows = await db
     .select({
       id: participants.id,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       grade: participants.grade,
       activatedAt: participants.activatedAt,
@@ -111,6 +116,7 @@ export const fetchParticipantsList = async (
   return {
     participants: rows.map((r) => ({
       id: r.id,
+      fullName: r.fullName,
       nickname: r.nickname,
       grade: r.grade,
       activatedAt: r.activatedAt.toISOString(),

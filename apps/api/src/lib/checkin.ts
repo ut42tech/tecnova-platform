@@ -2,18 +2,21 @@ import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
 import type { ParticipantSearchItem, TodaySessionsResponse } from '@tecnova/shared/schemas';
-import { and, asc, desc, eq, inArray, isNull, like } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
 
 // 学生側スプシのデータレンジ。1行目はヘッダー、2行目以降がデータ。
 // admin 側 (pre-registrations.ts) も同じレンジ・列構成を扱うため共有する。
-export const SHEET_RANGE = 'participants!A2:G';
+// 列構成: A=preRegId / B=氏名 / C=ニックネーム / D=学年 / E=事前登録日 /
+//        F=内製ID / G=アクティベート日時 / H=アクティベート済
+export const SHEET_RANGE = 'participants!A2:H';
 
 export interface PreRegRow {
-  rowNumber: number; // 1-indexed sheet row。ヘッダーが1行目なので A2:G を読んだ場合 index 0 → row 2
+  rowNumber: number; // 1-indexed sheet row。ヘッダーが1行目なので A2:H を読んだ場合 index 0 → row 2
   preRegistrationId: string;
+  fullName: string;
   nickname: string;
   grade: string;
   registeredAt: string;
@@ -27,25 +30,29 @@ export const parseSheetRows = (rows: string[][]): PreRegRow[] =>
     .map((row, i) => ({
       rowNumber: i + 2,
       preRegistrationId: row[0] ?? '',
-      nickname: row[1] ?? '',
-      grade: row[2] ?? '',
-      registeredAt: row[3] ?? '',
-      internalId: row[4] ?? '',
-      activatedAt: row[5] ?? '',
-      activated: (row[6] ?? '').toUpperCase() === 'TRUE',
+      fullName: row[1] ?? '',
+      nickname: row[2] ?? '',
+      grade: row[3] ?? '',
+      registeredAt: row[4] ?? '',
+      internalId: row[5] ?? '',
+      activatedAt: row[6] ?? '',
+      activated: (row[7] ?? '').toUpperCase() === 'TRUE',
     }))
     .filter((r) => r.preRegistrationId);
 
 export const fetchPreRegisteredList = async (
   encodedKey: string,
   spreadsheetId: string,
-): Promise<Array<Pick<PreRegRow, 'preRegistrationId' | 'nickname' | 'grade' | 'registeredAt'>>> => {
+): Promise<
+  Array<Pick<PreRegRow, 'preRegistrationId' | 'fullName' | 'nickname' | 'grade' | 'registeredAt'>>
+> => {
   const raw = await fetchSheetRows(encodedKey, spreadsheetId, SHEET_RANGE);
   return parseSheetRows(raw)
     .filter((r) => !r.activated)
     .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt))
-    .map(({ preRegistrationId, nickname, grade, registeredAt }) => ({
+    .map(({ preRegistrationId, fullName, nickname, grade, registeredAt }) => ({
       preRegistrationId,
+      fullName,
       nickname,
       grade,
       registeredAt,
@@ -130,6 +137,7 @@ export interface ActivateInput {
 
 export interface ActivateOutput {
   participantId: string;
+  fullName: string;
   nickname: string;
   grade: string;
   checkedInAt: Date;
@@ -168,6 +176,7 @@ export const activatePreRegistered = async ({
     db.insert(participants).values({
       id: newId,
       preRegistrationId,
+      fullName: target.fullName,
       nickname: target.nickname,
       grade: target.grade,
       activatedAt: checkedInAt,
@@ -180,7 +189,8 @@ export const activatePreRegistered = async ({
   ]);
 
   try {
-    const sheetRange = `participants!E${target.rowNumber}:G${target.rowNumber}`;
+    // 旧 E/F/G → 新 F/G/H に列が 1 つズレた（B列に氏名を挿入したため）
+    const sheetRange = `participants!F${target.rowNumber}:H${target.rowNumber}`;
     await updateSheetRow(encodedKey, spreadsheetId, sheetRange, [
       [newId, formatActivatedAtForSheet(checkedInAt), 'TRUE'],
     ]);
@@ -200,6 +210,7 @@ export const activatePreRegistered = async ({
 
   return {
     participantId: newId,
+    fullName: target.fullName,
     nickname: target.nickname,
     grade: target.grade,
     checkedInAt,
@@ -210,6 +221,7 @@ export const activatePreRegistered = async ({
 
 interface ActiveParticipant {
   id: string;
+  fullName: string;
   nickname: string;
 }
 
@@ -220,6 +232,7 @@ const requireActiveParticipant = async (
   const [row] = await db
     .select({
       id: participants.id,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       active: participants.active,
     })
@@ -229,11 +242,12 @@ const requireActiveParticipant = async (
   if (!row?.active) {
     throw new CheckinError('NOT_FOUND', `participant ${participantId} not found or inactive`);
   }
-  return { id: row.id, nickname: row.nickname };
+  return { id: row.id, fullName: row.fullName, nickname: row.nickname };
 };
 
 interface ProfileParticipant {
   id: string;
+  fullName: string;
   nickname: string;
   grade: string;
   activatedAt: Date;
@@ -246,6 +260,7 @@ const requireProfileParticipant = async (
   const [row] = await db
     .select({
       id: participants.id,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       grade: participants.grade,
       activatedAt: participants.activatedAt,
@@ -259,6 +274,7 @@ const requireProfileParticipant = async (
   }
   return {
     id: row.id,
+    fullName: row.fullName,
     nickname: row.nickname,
     grade: row.grade,
     activatedAt: row.activatedAt,
@@ -286,6 +302,7 @@ const findActiveSessionToday = async (
 
 export interface CheckInResult {
   sessionId: string;
+  fullName: string;
   nickname: string;
   checkedInAt: Date;
 }
@@ -313,12 +330,14 @@ export const recordCheckIn = async (db: Db, participantId: string): Promise<Chec
   }
   return {
     sessionId: inserted.id,
+    fullName: participant.fullName,
     nickname: participant.nickname,
     checkedInAt,
   };
 };
 
 export interface CheckOutResult {
+  fullName: string;
   nickname: string;
   checkedInAt: Date;
   checkedOutAt: Date;
@@ -338,6 +357,7 @@ export const recordCheckOut = async (db: Db, participantId: string): Promise<Che
   await db.update(sessions).set({ checkedOutAt }).where(eq(sessions.id, open.id));
 
   return {
+    fullName: participant.fullName,
     nickname: participant.nickname,
     checkedInAt: open.checkedInAt,
     checkedOutAt,
@@ -424,21 +444,29 @@ export const fetchParticipantProfile = async (
   };
 };
 
-// マニュアル入力画面のニックネーム検索。QR が読めない場面で使うので
-// 件数は実用上の上限（同名複数 + タイポ救済）として 50 件に制限する。
+// マニュアル入力画面の名前検索。QR が読めない場面で使うので件数は実用上の
+// 上限（同名複数 + タイポ救済）として 50 件に制限する。
+// ニックネーム / 氏名のいずれかに部分一致した参加者を返す。
 export const searchActiveParticipantsByNickname = async (
   db: Db,
   query: string,
   limit = 50,
 ): Promise<ParticipantSearchItem[]> => {
+  const pattern = `%${query}%`;
   const rows = await db
     .select({
       id: participants.id,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       grade: participants.grade,
     })
     .from(participants)
-    .where(and(eq(participants.active, true), like(participants.nickname, `%${query}%`)))
+    .where(
+      and(
+        eq(participants.active, true),
+        or(like(participants.nickname, pattern), like(participants.fullName, pattern)),
+      ),
+    )
     .orderBy(asc(participants.nickname), asc(participants.id))
     .limit(limit);
   return rows;
@@ -463,6 +491,7 @@ export const fetchReceptionHistoryToday = async (db: Db): Promise<TodaySessionsR
     .select({
       sessionId: sessions.id,
       participantId: sessions.participantId,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       grade: participants.grade,
       checkedInAt: sessions.checkedInAt,
@@ -476,6 +505,7 @@ export const fetchReceptionHistoryToday = async (db: Db): Promise<TodaySessionsR
   const items = rows.map((r) => ({
     sessionId: r.sessionId,
     participantId: r.participantId,
+    fullName: r.fullName,
     nickname: r.nickname,
     grade: r.grade,
     checkedInAt: r.checkedInAt.toISOString(),
@@ -499,6 +529,7 @@ export interface BulkCheckOutResult {
   checkedOutAt: Date;
   participants: Array<{
     participantId: string;
+    fullName: string;
     nickname: string;
     checkedInAt: Date;
     checkedOutAt: Date;
@@ -526,6 +557,7 @@ export const recordBulkCheckOut = async (
     .select({
       sessionId: sessions.id,
       participantId: sessions.participantId,
+      fullName: participants.fullName,
       nickname: participants.nickname,
       checkedInAt: sessions.checkedInAt,
     })
@@ -566,6 +598,7 @@ export const recordBulkCheckOut = async (
       .filter((session) => updatedSessionIds.has(session.sessionId))
       .map((session) => ({
         participantId: session.participantId,
+        fullName: session.fullName,
         nickname: session.nickname,
         checkedInAt: session.checkedInAt,
         checkedOutAt,
@@ -579,9 +612,16 @@ export const recordBulkCheckOut = async (
 // /checkin/scan の動作: スキャン値を participants.id として参照し、当日の
 // 状態に応じて check-in / check-out のどちらかにルーティングする。
 export type ScanResult =
-  | { action: 'check_in'; sessionId: string; nickname: string; checkedInAt: Date }
+  | {
+      action: 'check_in';
+      sessionId: string;
+      fullName: string;
+      nickname: string;
+      checkedInAt: Date;
+    }
   | {
       action: 'check_out';
+      fullName: string;
       nickname: string;
       checkedInAt: Date;
       checkedOutAt: Date;
