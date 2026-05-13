@@ -15,6 +15,13 @@
       "when": 1777791684246,
       "tag": "0001_perpetual_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1778671918756,
+      "tag": "0002_early_network",
+      "breakpoints": true
     }
   ]
 }

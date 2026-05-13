@@ -2,7 +2,7 @@
 
 | 項目                   | 内容                                                                     |
 | ---------------------- | ------------------------------------------------------------------------ |
-| ドキュメントバージョン | v1.3                                                                     |
+| ドキュメントバージョン | v1.4                                                                     |
 | 想定運用開始           | 2026年5月中旬                                                            |
 | 関連ドキュメント       | [`requirements.md`](./requirements.md)（全体構想・将来構想を含む完全版） |
 
@@ -232,12 +232,13 @@ async function getOrCreateTodayEvent(
 | 列  | カラム名           | 型       | 説明                               | 編集権限     |
 | --- | ------------------ | -------- | ---------------------------------- | ------------ |
 | A   | 事前登録ID         | text     | PRE-2026-0001 形式                 | 教員側       |
-| B   | ニックネーム       | text     |                                    | 教員側       |
-| C   | 学年               | text     | 小1, 小4, 中2 等                   | 教員側       |
-| D   | 事前登録日         | date     | YYYY-MM-DD                         | 教員側       |
-| E   | 内製ID             | text     | 26001 等（バックエンドが書き込み） | バックエンド |
-| F   | アクティベート日時 | datetime | YYYY-MM-DD HH:mm:ss（同上）        | バックエンド |
-| G   | アクティベート済   | boolean  | TRUE/FALSE（同上）                 | バックエンド |
+| B   | 氏名               | text     | 本名（識別補助）                   | 教員側       |
+| C   | ニックネーム       | text     | メイン識別子                       | 教員側       |
+| D   | 学年               | text     | 小1, 小4, 中2 等                   | 教員側       |
+| E   | 事前登録日         | date     | YYYY-MM-DD                         | 教員側       |
+| F   | 内製ID             | text     | 26001 等（バックエンドが書き込み） | バックエンド |
+| G   | アクティベート日時 | datetime | YYYY-MM-DD HH:mm:ss（同上）        | バックエンド |
+| H   | アクティベート済   | boolean  | TRUE/FALSE（同上）                 | バックエンド |
 
 1行目はヘッダー、2行目以降がデータ。
 
@@ -245,15 +246,15 @@ async function getOrCreateTodayEvent(
 
 **読み取り**:
 
-- `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!A2:G` で全データ取得
-- レスポンスを配列にパースし、Gが `FALSE` または空のレコードをフィルタ
+- `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!A2:H` で全データ取得
+- レスポンスを配列にパースし、Hが `FALSE` または空のレコードをフィルタ
 - 5秒キャッシュ（Workers Cache APIまたはmoduleスコープのMap）
 
 **書き込み**:
 
-- アクティベート時、対象行のE/F/G列を更新
+- アクティベート時、対象行のF/G/H列を更新
 - 行番号は読み取り時のインデックスから特定（Aの順序に依存するためソート不可）
-- `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!E{row}:G{row}?valueInputOption=USER_ENTERED` で3列まとめて更新
+- `PUT https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!F{row}:H{row}?valueInputOption=USER_ENTERED` で3列まとめて更新
 - リクエストボディ: `{ "values": [["26001", "2026-05-15 09:32:15", "TRUE"]] }`
 
 ### 5.3 サービスアカウント設定
@@ -284,6 +285,26 @@ Google Cloud Consoleで：
    echo 'GOOGLE_SHEETS_ID=1AbCdEf...' >> apps/api/.dev.vars
    ```
 
+### 5.5 参加者 Drive フォルダの自動作成（GAS webhook）
+
+アクティベート成功時、参加者ごとの作品保存用 Google Drive フォルダを GAS（Apps
+Script）の Web App エンドポイント経由で作成する。
+
+- Workers 側は `c.executionCtx.waitUntil()` でレスポンス送信後に POST する
+  （実装: `apps/api/src/lib/drive-folder.ts` / `apps/api/src/routes/checkin.ts` の
+  `queueDriveFolderCreation`）。Drive 作成の失敗はチェックインを止めない。
+- GAS 側は `secret` 一致を確認してから Drive フォルダを `participantId_nickname` で作成し、
+  `{ ok: true, folderId, folderName, reused }` を返す。
+- 必要な Secret は 2 つ:
+
+  | 変数名                     | 説明                                                                   |
+  | -------------------------- | ---------------------------------------------------------------------- |
+  | `GAS_DRIVE_WEBHOOK_URL`    | GAS Web App の `/exec` URL                                             |
+  | `GAS_DRIVE_WEBHOOK_SECRET` | GAS 側と共有する任意のシークレット文字列（リクエストボディに同梱する） |
+
+  両方が未設定の場合は機能ごと無効化される（`url && secret` が揃わないと no-op）。
+  片方だけ設定されている場合は `console.warn` を出してスキップする（fail-closed）。
+
 **なぜ base64 なのか**: 生 JSON を `.dev.vars` に書くと、dotenv パーサが `private_key` 内の `\n` エスケープを実改行に変換してしまい、Worker 側で `JSON.parse` が「Bad control character」で失敗する。base64 でラップしておけば dotenv は手を加えず、コード側で `atob` → `JSON.parse` の順に処理できる。
 
 ### 5.4 Workers環境でのGoogle Sheets API実装
@@ -313,7 +334,16 @@ Google Cloud Consoleで：
 
 すべてのレスポンスは JSON。エラー時は HTTP 4xx/5xx + `{ "error": "ERROR_CODE", "message": "..." }`。
 
-### 6.1 認証なし（チェックインiPad用）
+### 6.1 受付端末用（`/checkin/*`・メンター認証必須）
+
+iPad 受付端末は会場の運営者（メンター）端末である前提に変更したため、`/checkin/*`
+配下は `/api/*` と同じ Cookie ベース認証で守る。子どもは受付に立つメンターの端末を
+通してチェックインする運用に倒し、認証なしで誰でも叩けるエンドポイントは
+`/health` 系のみとした。
+
+CORS / 認証ミドルウェアは `apps/api/src/index.ts` で `/api/*` と `/checkin/*` の
+両方に対して `TRUSTED_ORIGINS` ベースの cors + `requireAuthenticatedMentor` を
+適用している。
 
 #### `GET /checkin/pre-registered`
 
@@ -373,9 +403,9 @@ D1 にはインタラクティブ・トランザクションがないため、�
 2. 内製ID採番（`generateNextParticipantId`）
 3. event_id を取得 or 作成（`getOrCreateTodayEvent`）
 4. **`db.batch([...])` で原子的に書き込み**:
-   - `INSERT participants`（id, preRegistrationId, nickname, grade）
+   - `INSERT participants`（id, preRegistrationId, fullName, nickname, grade）
    - `INSERT sessions`（participantId, eventId, checkedInAt）
-5. スプシ書き戻し（E/F/G列を更新）
+5. スプシ書き戻し（F/G/H列を更新）
 6. **スプシ書き戻し失敗時は補償処理**:
    - `db.batch([...])` で `DELETE sessions` → `DELETE participants` を実行
    - クライアントには `SHEETS_WRITE_FAILED` を返す
@@ -466,6 +496,107 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 - それ以外 → `INVALID_SCAN_VALUE` エラー
 
 **レスポンス**: チェックイン or チェックアウトと同じ。`action: "check_in" | "check_out"` を含める。
+
+#### `GET /checkin/history/today`
+
+当日の受付履歴（チェックイン中・退室済を含む全セッション）。受付端末側で「QR が
+手元にない参加者の状態確認」や「閉場時の一括チェックアウト」導線で使う。
+
+**レスポンス**: `GET /api/sessions/today` と同じ shape（`event` / `sessions` /
+`summary`）。共通スキーマ `todaySessionsResponseSchema` を共有。
+
+#### `POST /checkin/history/check-out-bulk`
+
+複数参加者を一括チェックアウトする。すでに退室済みの参加者は対象外として扱い、
+実際に更新できたセッションだけをレスポンスに含める。
+
+**リクエスト**:
+
+```json
+{ "participantIds": ["26001", "26002"] }
+```
+
+**レスポンス**:
+
+```json
+{
+  "checkedOutAt": "2026-05-15T12:30:00+09:00",
+  "checkedOutCount": 2,
+  "participants": [
+    {
+      "participantId": "26001",
+      "nickname": "たくや",
+      "checkedInAt": "2026-05-15T09:32:15+09:00",
+      "checkedOutAt": "2026-05-15T12:30:00+09:00",
+      "stayDurationMinutes": 178
+    }
+  ]
+}
+```
+
+#### `GET /checkin/participants/search`
+
+ニックネーム部分一致で active な参加者を検索する。マニュアル入力画面の
+「名前で探す」モードで使う。`/api/participants` と違って admin 権限不要・
+ページネーションなし・active=true のみ。
+
+**クエリ**: `?q=<1〜40文字>`
+
+**レスポンス**:
+
+```json
+{
+  "participants": [{ "id": "26001", "nickname": "たくや", "grade": "小4" }]
+}
+```
+
+#### `GET /checkin/participants/:participantId`
+
+受付プロフィール画面。QR/手入力で確定した直後、まずこのエンドポイントを叩き、
+参加者の通算来場・直近来場日・現在の在場状態をまとめて取得する。フロントは
+`current.nextAction` を見て表示する操作ボタンを `check_in` / `check_out` の
+一方に絞る。
+
+**レスポンス**:
+
+```json
+{
+  "participant": {
+    "id": "26001",
+    "nickname": "たくや",
+    "grade": "小4",
+    "activatedAt": "2026-04-20T09:10:00+09:00"
+  },
+  "stats": {
+    "visitCount": 5,
+    "lastVisitedAt": "2026-05-08T14:00:00+09:00",
+    "totalStayDurationMinutes": 920
+  },
+  "current": {
+    "isPresent": false,
+    "checkedInAt": null,
+    "nextAction": "check_in"
+  },
+  "sessions": [
+    {
+      "sessionId": "uuid-...",
+      "checkedInAt": "2026-05-08T13:02:00+09:00",
+      "checkedOutAt": "2026-05-08T15:10:00+09:00",
+      "stayDurationMinutes": 128,
+      "isPresent": false
+    }
+  ]
+}
+```
+
+#### `POST /checkin/participants/:participantId/attendance`
+
+プロフィール画面の「チェックイン」「チェックアウト」ボタンから呼ばれる実行
+エンドポイント。サーバーが現在の在場状態を再判定して、`check_in` / `check_out`
+のどちらかを実行する。`scanValue` を URL パラメータから読む `/checkin/scan` の
+別表現と考えればよい。
+
+**レスポンス**: `/checkin/scan` と同じ `scanResponseSchema`。
 
 ### 6.2 認証あり（管理画面用）
 
@@ -563,57 +694,60 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 
 ### 7.1 チェックインiPadアプリ（apps/checkin）
 
-#### 7.1.1 トップ画面（手入力 + QR切替）
+iPad は受付メンターの端末。トップ画面はカメラを常時起動した QR スキャナ + 横の
+ショートカット（初めての人 / 受付りれき / マニュアル入力）で構成し、子どもが
+個別のフォームを操作する想定はしない。
 
-- デフォルトは 5 桁の手入力フォーム（`pattern="\d{5}"` で数字のみ）
-- フォーム下に「QRコードで読み取る（試験運用）」ボタン → カメラビューに切替
-- カメラビューでは「手入力に戻る」ボタンで元のフォームに復帰
-- 下部に「初めての方はこちら」ボタン
-- QR 認識時は **即時 API を叩かず確認画面を経由**（誤読・誤タップ対策）
-  - 「この ID で合っていますか？」+ 大きく ID 表示 + 「やり直す」/「チェックイン / アウト」
-  - 確認後に `/checkin/scan` 呼び出し
-- QR/バーコード読み取りライブラリ: `@zxing/browser`（`BrowserMultiFormatReader.decodeFromVideoDevice`）
+#### 7.1.1 トップ画面（QR + ショートカット 3 つ）
 
-**設計意図**: QR スキャナは試験運用フェーズ（Phase 1.5 で本格運用）。手入力フォームを
-正規ルートとして残し、QR は opt-in で並走させる。スキャナの起動／停止は React の
-`useEffect` で `mode === 'qr' && state.kind === 'idle'` のときだけ走らせ、確認画面に
-遷移した時点で controls.stop() を呼んで二重検出を防ぐ。
+- 主画面はカメラビュー（`@zxing/browser` の `BrowserMultiFormatReader.decodeFromVideoDevice`）
+- 5 桁の内製ID形式（`PARTICIPANT_ID_PATTERN`）にマッチした値だけを採用
+- 認識成功で即 `/reception/participants/[id]` に遷移し、controls.stop() で二重検出を防ぐ
+- カメラ再起動 / カメラ切り替えボタンを提供（複数 videoDevice 切り替え対応）
+- 右カラムに 3 つの ActionPanel:
+  - `/first-time` 初めての人 → 事前登録者一覧
+  - `/history` 受付りれき → 当日履歴 + 一括チェックアウト
+  - `/manual` マニュアル入力 → ID/名前検索
 
-#### 7.1.2 初めての方一覧画面
+#### 7.1.2 受付プロフィール画面 `/reception/participants/[id]`
 
-- ヘッダー: 「初めての方」
-- 一覧: 未アクティベートの事前登録者をカード表示（ニックネーム＋学年）
+- QR 認識直後 or マニュアル入力からの確定後に到達する**正規の確認画面**
+- `GET /checkin/participants/:id` で profile / stats / current / sessions を取得
+- 上部に大きく「○○さん（学年）」「あなたのIDは 26001 です」を表示
+- 大きな単一の実行ボタン（`current.nextAction` に応じて「チェックイン」/「チェックアウト」）
+  - タップで `POST /checkin/participants/:id/attendance` を呼ぶ
+  - レスポンス（`action: 'check_in' | 'check_out'`）に応じて結果サマリを表示
+- 通算来場回数・直近来場日・累計滞在時間と、活動カレンダーのタイル表示（`attendanceIntensityClasses`）
+
+#### 7.1.3 初めての方一覧画面 `/first-time`
+
+- 未アクティベートの事前登録者をカード表示（ニックネーム＋学年）
 - 登録日新しい順
-- カードタップ → `/checkin/activate` 呼び出し → 完了画面へ
-- データロード中は「読み込み中...」表示（スケルトン未採用）
+- カードタップ → `POST /checkin/activate` 呼び出し → ID 表示画面 → トップ復帰
+- ロード中はスケルトン表示
 
-#### 7.1.3 チェックイン完了画面
+#### 7.1.4 受付履歴画面 `/history`
 
-- 「○○さん、こんにちは！」（大きく）
-- 「チェックインしました」
-- 「戻る」ボタンでトップ画面に戻る（自動遷移なし）
+- `GET /checkin/history/today` で当日のセッション一覧を取得
+- 各行に「現在在場 / 退室済」バッジ、チェックイン時刻、滞在時間を表示
+- 在場中の参加者を選択して「一括チェックアウト」を確認ダイアログ越しに実行（`POST /checkin/history/check-out-bulk`）
+- 行タップで `/reception/participants/[id]` に遷移
 
-#### 7.1.4 チェックアウト完了画面
+#### 7.1.5 マニュアル入力画面 `/manual`
 
-- 「○○さん、お疲れさま！」（大きく）
-- 「今日の滞在時間: ○時間○分」
-- 「戻る」ボタンでトップ画面に戻る（自動遷移なし）
+- 「ID で入力」「名前で探す」のタブ切替
+- ID モード: 5 桁の手入力フォーム → `/reception/participants/[id]` へ遷移
+- 名前モード: `GET /checkin/participants/search?q=...` で部分一致検索 → 候補タップで遷移
 
-#### 7.1.5 アクティベート完了画面
+#### 7.1.6 ログイン / 設定 / ガイドライン
 
-- 「○○さん、ようこそ！」
-- 「あなたのIDは 26001 です」（強調・大きく表示）
-- 「スタッフにIDを伝えてネームカードを受け取ってね」
-- 現行実装では自動遷移なし（手動導線は MVP 仕上げで調整予定）
+- `/login`: Google OAuth ボタンのみ。Better Auth の `signIn.social` を呼ぶ
+- `/settings`: ログアウト導線、現在のメンター情報表示
+- `/guideline`: 子ども向けの利用ガイド（PWA 内導線）
 
-#### 7.1.6 エラー画面
+#### 7.1.7 PWA 設定
 
-- 簡潔なエラーメッセージ
-- 「戻る」ボタンでトップ画面に戻る（自動遷移なし）
-
-#### 7.1.7 PWA設定
-
-- `manifest.json` でホーム画面追加可能に（`display: fullscreen`）
+- `app/manifest.ts` でホーム画面追加可能に（`display: 'fullscreen'`）
 - iOSアクセスガイド機能でアプリ固定運用（運用マニュアル別途）
 - HTTPS必須（Vercelデプロイで自動対応）
 
@@ -860,7 +994,9 @@ export default defineConfig({
 
 ### 10.1 ローンチ判定基準（最低限のGo判定）
 
-> 進捗メモ（2026-05-05時点）: iPad実機での動作確認は完了。以下チェックリストを本番運用リハーサル時に最終確定する。
+> 進捗メモ（2026-05-13時点）: iPad実機での動作確認は完了。受付プロフィール画面 /
+> 履歴 / 一括チェックアウト / マニュアル入力までフロント実装済み。本番運用
+> リハーサル時にチェックリストを最終確定する。
 
 #### チェックイン基盤
 
@@ -875,7 +1011,7 @@ export default defineConfig({
 - [ ] スプシに登録された事前登録者が登録日新しい順に並ぶ
 - [ ] カードをタップするとアクティベートされ、内製IDが画面に表示される
 - [ ] 内製DBに participants と sessions レコードが作成される
-- [ ] スプシのE/F/G列が正しく更新される
+- [ ] スプシのF/G/H列が正しく更新される
 - [ ] アクティベート済みの参加者は次回以降一覧に表示されない
 
 #### 通常チェックイン/アウト
@@ -907,9 +1043,10 @@ export default defineConfig({
 - 活動ログ記入は引き続き従来通りスプシ手作業（Phase 1.5まで）
 - スプシ書き戻し失敗時はDBもロールバックするため、ユーザーに再試行を求める
 
-### 10.3 2026-05-05時点の残タスク（MVP仕上げ）
+### 10.3 2026-05-13時点の残タスク（MVP仕上げ）
 
-- フロントエンドUXの本格調整（checkin/admin の導線・文言・視認性）
+- 受付プロフィール画面（`/reception/participants/[id]`）の本番リハーサル
+- 同時アクティベート時の採番衝突リトライ実装（`apps/api/src/lib/checkin.ts` の TODO）
 - 運用手順の確定（Wi-Fi断フォールバック、当日担当オペレーション）
 - 昨年度データのD1反映（匿名化済みデータのみ、participants/events/sessions の整合確認）
 

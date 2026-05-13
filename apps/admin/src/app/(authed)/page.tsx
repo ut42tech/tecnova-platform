@@ -13,8 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { ApiError, apiJson } from '@tecnova/ui/lib/api-client';
 import { useEffect, useState } from 'react';
-import { ApiError, apiJson } from '@/lib/api';
 
 type State =
   | { kind: 'loading' }
@@ -86,6 +86,7 @@ export default function DashboardPage() {
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead>
+              <TableHead>氏名</TableHead>
               <TableHead>ニックネーム</TableHead>
               <TableHead>学年</TableHead>
               <TableHead>チェックイン</TableHead>
@@ -96,7 +97,7 @@ export default function DashboardPage() {
           <TableBody>
             {sessions.length === 0 ? (
               <TableRow>
-                <TableCell className="py-6 text-center text-muted-foreground" colSpan={6}>
+                <TableCell className="py-6 text-center text-muted-foreground" colSpan={7}>
                   該当データがありません
                 </TableCell>
               </TableRow>
@@ -104,6 +105,7 @@ export default function DashboardPage() {
               sessions.map((s) => (
                 <TableRow key={s.sessionId}>
                   <TableCell className="font-mono">{s.participantId}</TableCell>
+                  <TableCell>{s.fullName}</TableCell>
                   <TableCell>{s.nickname}</TableCell>
                   <TableCell>{s.grade}</TableCell>
                   <TableCell>{fmtTime(s.checkedInAt)}</TableCell>

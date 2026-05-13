@@ -15,8 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
-import { ApiError, apiJson } from '@/lib/api';
 
 type State =
   | { kind: 'loading' }
@@ -24,14 +25,6 @@ type State =
   | { kind: 'error'; message: string };
 
 const PAGE_SIZE = 50;
-
-const fmtDate = (iso: string): string =>
-  new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(iso));
 
 export default function ParticipantsPage() {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -62,9 +55,7 @@ export default function ParticipantsPage() {
         );
         setState({ kind: 'ok', data });
       } catch (e) {
-        const message =
-          e instanceof ApiError ? `HTTP ${e.status}` : e instanceof Error ? e.message : String(e);
-        setState({ kind: 'error', message });
+        setState({ kind: 'error', message: apiErrorMessage(e) });
       }
     })();
   }, [debouncedSearch, page]);
@@ -78,7 +69,7 @@ export default function ParticipantsPage() {
         <h2 className="text-lg font-semibold">参加者一覧</h2>
         <Input
           type="search"
-          placeholder="ニックネームで検索"
+          placeholder="ニックネーム・氏名で検索"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
@@ -101,6 +92,7 @@ export default function ParticipantsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
+                  <TableHead>氏名</TableHead>
                   <TableHead>ニックネーム</TableHead>
                   <TableHead>学年</TableHead>
                   <TableHead>アクティベート日</TableHead>
@@ -110,7 +102,7 @@ export default function ParticipantsPage() {
               <TableBody>
                 {state.data.participants.length === 0 ? (
                   <TableRow>
-                    <TableCell className="py-6 text-center text-muted-foreground" colSpan={5}>
+                    <TableCell className="py-6 text-center text-muted-foreground" colSpan={6}>
                       該当データがありません
                     </TableCell>
                   </TableRow>
@@ -118,9 +110,10 @@ export default function ParticipantsPage() {
                   state.data.participants.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-mono">{p.id}</TableCell>
+                      <TableCell>{p.fullName}</TableCell>
                       <TableCell>{p.nickname}</TableCell>
                       <TableCell>{p.grade}</TableCell>
-                      <TableCell>{fmtDate(p.activatedAt)}</TableCell>
+                      <TableCell>{formatJstDate(p.activatedAt)}</TableCell>
                       <TableCell>
                         <Badge variant={p.active ? 'default' : 'secondary'}>
                           {p.active ? '有効' : '無効'}

@@ -2,12 +2,12 @@
 
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
+import { useMe } from '@tecnova/ui/components/me-provider';
 import { Separator } from '@tecnova/ui/components/separator';
 import { cn } from '@tecnova/ui/lib/utils';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
-import { useMe } from '@/lib/me-context';
 
 interface NavItem {
   href: string;

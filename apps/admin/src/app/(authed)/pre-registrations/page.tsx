@@ -29,6 +29,7 @@ import {
 } from '@tecnova/ui/components/card';
 import { Input } from '@tecnova/ui/components/input';
 import { Label } from '@tecnova/ui/components/label';
+import { useMe } from '@tecnova/ui/components/me-provider';
 import {
   Select,
   SelectContent,
@@ -45,9 +46,8 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { ApiError, apiErrorMessage, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { ApiError, apiFetch, apiJson } from '@/lib/api';
-import { useMe } from '@/lib/me-context';
 
 type State =
   | { kind: 'loading' }
@@ -61,14 +61,6 @@ const todayInJst = (): string =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-
-const apiErrorMessage = (e: unknown): string => {
-  if (e instanceof ApiError) {
-    const body = e.body as { message?: string; error?: string } | undefined;
-    return body?.message ?? body?.error ?? `HTTP ${e.status}`;
-  }
-  return e instanceof Error ? e.message : String(e);
-};
 
 export default function PreRegistrationsPage() {
   const me = useMe();
@@ -123,6 +115,7 @@ export default function PreRegistrationsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>事前登録ID</TableHead>
+                <TableHead>氏名</TableHead>
                 <TableHead>ニックネーム</TableHead>
                 <TableHead>学年</TableHead>
                 <TableHead>事前登録日</TableHead>
@@ -132,7 +125,7 @@ export default function PreRegistrationsPage() {
             <TableBody>
               {state.preRegistrations.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-6 text-center text-muted-foreground" colSpan={5}>
+                  <TableCell className="py-6 text-center text-muted-foreground" colSpan={6}>
                     未アクティベートの事前登録はありません
                   </TableCell>
                 </TableRow>
@@ -152,6 +145,7 @@ export default function PreRegistrationsPage() {
 const DEFAULT_GRADE: Grade = '小1';
 
 function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<void> }) {
+  const [fullName, setFullName] = useState('');
   const [nickname, setNickname] = useState('');
   const [grade, setGrade] = useState<Grade>(DEFAULT_GRADE);
   const [registeredAt, setRegisteredAt] = useState(todayInJst());
@@ -164,8 +158,9 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
     setBusy(true);
     setError(null);
     try {
-      const body: CreatePreRegistrationRequest = { nickname, grade, registeredAt };
+      const body: CreatePreRegistrationRequest = { fullName, nickname, grade, registeredAt };
       await apiJson<PreRegistrationItem>('/api/pre-registrations', { method: 'POST', body });
+      setFullName('');
       setNickname('');
       setGrade(DEFAULT_GRADE);
       setRegisteredAt(todayInJst());
@@ -185,7 +180,18 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
           <CardDescription>事前登録IDは自動採番されます（PRE-YYYY-NNNN）。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="grid gap-3 md:grid-cols-[minmax(14rem,1fr)_8rem_12rem_auto] md:items-end">
+          <div className="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_8rem_12rem_auto] md:items-end">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="pre-registration-full-name">氏名</Label>
+              <Input
+                id="pre-registration-full-name"
+                type="text"
+                required
+                maxLength={80}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="pre-registration-nickname">ニックネーム</Label>
               <Input
@@ -247,7 +253,7 @@ function PreRegistrationRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const deleteDescription = `${item.preRegistrationId}（${item.nickname}）を削除します。この操作は取り消せません。`;
+  const deleteDescription = `${item.preRegistrationId}（${item.fullName} / ${item.nickname}）を削除します。この操作は取り消せません。`;
 
   const remove = async () => {
     if (busy) return;
@@ -276,6 +282,7 @@ function PreRegistrationRow({
   return (
     <TableRow className="align-top">
       <TableCell className="font-mono">{item.preRegistrationId}</TableCell>
+      <TableCell>{item.fullName}</TableCell>
       <TableCell>{item.nickname}</TableCell>
       <TableCell>{item.grade}</TableCell>
       <TableCell>{item.registeredAt}</TableCell>

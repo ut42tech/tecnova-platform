@@ -1,0 +1,1 @@
+ALTER TABLE `participants` ADD `full_name` text DEFAULT '' NOT NULL;

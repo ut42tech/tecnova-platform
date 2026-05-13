@@ -40,13 +40,13 @@ import { Card, CardContent } from '@tecnova/ui/components/card';
 import { Checkbox } from '@tecnova/ui/components/checkbox';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
+import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { cn } from '@tecnova/ui/lib/utils';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
-import { apiFetch, readErrorMessage } from '@/lib/api';
 import { formatJapaneseDate, formatJapaneseDateTime } from '@/lib/format';
 
 type State =
@@ -334,6 +334,10 @@ function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
     <div className="overflow-hidden rounded-lg border bg-white">
       <Table>
         <TableBody className="text-base sm:text-lg">
+          <TableRow>
+            <TableCell className="w-36 bg-muted/40 font-bold text-muted-foreground">氏名</TableCell>
+            <TableCell className="break-words font-bold">{item.fullName}</TableCell>
+          </TableRow>
           <TableRow>
             <TableCell className="w-36 bg-muted/40 font-bold text-muted-foreground">
               ニックネーム
@@ -720,6 +724,7 @@ function GuidelinePageContent() {
             value: state.data.participantId,
             valueClassName: 'tabular-nums',
           },
+          { label: '氏名', value: state.data.fullName },
           { label: 'ニックネーム', value: state.data.nickname },
           { label: '学年', value: state.data.grade },
           {

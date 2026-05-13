@@ -2,9 +2,12 @@ import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 // 参加者マスタ
 // id は西暦下2桁＋連番（例: '26001'）。来場順採番のため、SELECT で直近IDを取得して計算する。
+// fullName は識別補助。メイン識別子はニックネーム。
 export const participants = sqliteTable('participants', {
   id: text('id').primaryKey(),
   preRegistrationId: text('pre_registration_id').unique().notNull(),
+  // 既存行のために default '' を残す。新規は API 層が min(1) で弾く。
+  fullName: text('full_name').notNull().default(''),
   nickname: text('nickname').notNull(),
   grade: text('grade').notNull(),
   // タイムスタンプは UTC の Unix epoch ms で保存し、表示時に JST 変換する

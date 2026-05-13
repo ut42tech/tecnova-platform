@@ -1,4 +1,4 @@
-# セッション引き継ぎノート（2026-05-05時点）
+# セッション引き継ぎノート（2026-05-13時点）
 
 新しい Claude セッションがこのリポジトリで作業を再開するときの起点。
 このファイルは「今ここまで来ている」を素早く把握するためのもの。詳細仕様は引き続き
@@ -33,35 +33,61 @@
 | W2 Day 9 | checkin の PWA 化（manifest, apple-icon, viewport） | #15 |
 | - | 事前登録管理ページ（admin） + grade enum 制約 | #23 |
 | W2 Day 9 | checkin に opt-in QR スキャン + 確認クッション追加 | feat/checkin-qr-scanner |
+| - | shadcn/ui へ全置換、Maia テーマ適用 | #25, #26 |
+| - | API ルートを `routes/` + `middleware/` にモジュール分割 | #27, 859208d |
+| - | checkin: 手入力ページ・受付プロフィール画面・出席タイル | 8e60249, 2e91f68, cdcc8d0 |
+| - | checkin: 受付履歴 + 一括チェックアウト | 8ad5d51, f609c5b |
+| - | checkin: ログイン画面と設定画面、ガイドラインページ | f8e59fd, 264f970 |
+| - | checkin に GAS Drive folder webhook 連携（アクティベート時に Drive フォルダ自動生成） | 488f42d |
+| - | checkin: マニュアル入力に「名前で探す」モード + `/checkin/participants/search` | d21ed3a |
+| - | フロント共通コードを `@tecnova/ui` に集約（api-client / MeProvider / JST フォーマッタ） | eac8560, cbddf77, 9e97694 |
 
 **Day 10 と Day 11 を意図的に入れ替えた**（Day 11 = Better Auth を先に）。理由は Day 10 の
 `/api/*` 系エンドポイントが認証必須で、後から auth を retrofit するより auth 基盤を先に
 通したほうが安全だったため。詳細は PR #8 の本文。
+
+**`/checkin/*` も Cookie 認証必須に格上げ**（5月の改修で）。受付端末は子どもが直接
+触る端末ではなく受付メンターの端末である前提に倒し、`apiCors` + `requireAuthenticatedMentor`
+を `/api/*` と同じく適用している（`apps/api/src/index.ts`）。
 
 ### 現状動作している範囲
 
 ローカル開発 (`pnpm --filter @tecnova/api dev` + `pnpm --filter checkin dev` +
 `pnpm --filter admin dev`) で：
 
-- iPad PWA 側（`localhost:3000`）：
-  - `/` ID 5桁手入力 → `/checkin/scan` → check-in / check-out 自動切替
-  - `/` 「QRコードで読み取る（試験運用）」ボタン → カメラ起動 → 5桁認識
-    → 確認画面（やり直す / チェックイン）→ `/checkin/scan`
+- iPad PWA 側（`localhost:3000`、Better Auth セッション必須）：
+  - `/login` → Google OAuth → mentors 許可リスト判定 → `/`
+  - `/` 常時カメラ起動の QR スキャナ + 右に 3 つのショートカット
+    （初めての人 / 受付りれき / マニュアル入力）
+  - 5 桁 ID を認識すると `/reception/participants/[id]` へ遷移
+  - `/reception/participants/[id]`：受付プロフィール画面。
+    `GET /checkin/participants/:id` で stats を取り、`current.nextAction` に応じた
+    単一ボタン（チェックイン or チェックアウト）→ `POST /checkin/participants/:id/attendance`
   - `/first-time` 未アクティベート一覧 → タップ → `/checkin/activate` → ID表示
+  - `/manual` ID 入力 or 名前検索（`GET /checkin/participants/search`）
+  - `/history` 当日履歴 + 在場中の参加者を選んで `POST /checkin/history/check-out-bulk`
+  - `/settings` ログアウト導線、`/guideline` 子ども向けガイド
 - 管理画面（`localhost:3001`）：
   - `/login` → Google OAuth → mentors 許可リスト判定 → `/` でユーザー名表示
   - 未ログインで `/` を叩くと `/login` に飛ぶ
   - 許可リスト外メアドだと 403「アクセス権限がありません」
   - `admin` ロールなら `/pre-registrations`（事前登録の追加/削除）と `/mentors` が利用可能
 - API（`localhost:8787`）：
-  - `/health`, `/sheets/health`
-  - `/checkin/pre-registered`, `/checkin/activate`,
-    `/checkin/sessions/check-in`, `/checkin/sessions/check-out`, `/checkin/scan`
-  - `/api/auth/*`（Better Auth）
-  - `/api/me`（middleware 動作確認用）
-  - `/api/sessions/today`, `/api/participants`（管理画面用、auth-protected）
-  - `/api/mentors`（admin専用CRUD）
-  - `/api/pre-registrations`（admin専用：学生側スプシの追加/削除）
+  - public: `/health`, `/sheets/health`
+  - Better Auth: `/api/auth/*`
+  - `/checkin/*`（mentor 認証必須）:
+    - `/pre-registered`, `/activate`
+    - `/sessions/check-in`, `/sessions/check-out`, `/scan`
+    - `/history/today`, `/history/check-out-bulk`
+    - `/participants/search`
+    - `/participants/:id`, `/participants/:id/attendance`
+  - `/api/*`（mentor 認証必須）:
+    - `/me`（middleware 動作確認用）
+    - `/sessions/today`, `/participants`
+    - `/mentors`（admin CRUD）
+    - `/pre-registrations`（admin：学生側スプシの追加/削除）
+  - アクティベート時は `c.executionCtx.waitUntil()` で GAS Drive webhook を背面呼び出し
+    （`GAS_DRIVE_WEBHOOK_URL` / `GAS_DRIVE_WEBHOOK_SECRET` 未設定なら no-op）
 
 ### 本番側でできていること
 
@@ -90,14 +116,17 @@
 
 **MVP仕上げ（運用開始前の最終調整）**
 
-現状、MVPの必須機能は概ね実装済み。以降は以下を優先して進める。
+5月初旬以降のリファクタ・新機能でフロントの操作モデルは「QR → 受付プロフィール
+画面で確定」に揃った。残タスクは以下：
 
-1. **フロントエンドUXの本格調整**
-   - checkin: エラー導線、戻る導線、文言・ボタン配置、画面遷移テンポの最適化
-   - admin: 一覧の可読性、更新導線、ロール別ナビ体験の改善
-2. **運用手順の確定**
+1. **受付プロフィール画面の本番リハーサル**
+   - 同時タップ / Wi-Fi 切断時の挙動を実機で確認
+   - 「チェックインしました」のフィードバック視認性、戻る導線
+2. **同時アクティベート時の採番衝突リトライ**
+   - `apps/api/src/lib/checkin.ts` の TODO。最大3回のリトライ
+3. **運用手順の確定**
    - Wi-Fi断フォールバック、当日オペレーション、権限者向け手順を文書化
-3. **昨年度データのD1反映**
+4. **昨年度データのD1反映**
    - 個人情報を持ち込まず、participants / events / sessions の最小構成で移行
    - JST/UTC変換と参照整合（participant_id, event_id）を検証
 
@@ -106,6 +135,15 @@
 ## 重要：今までに踏んだ罠と回避策
 
 新しいセッションが知っておくべき非自明なこと。
+
+### `/checkin/*` の認証境界が変わっている
+
+- 当初設計（`requirements.md` 8.2）では `/checkin/*` は認証なしだったが、
+  受付端末はメンターが操作する前提に倒したため、5月の改修で **mentor 認証必須に変更**
+- `apps/api/src/index.ts` で `/api/*` と `/checkin/*` の両方に `apiCors` +
+  `requireAuthenticatedMentor` を適用している
+- フロント側は `apps/checkin` も `apps/admin` 同様に `/login` を持ち、`MeProvider`
+  でセッションを取得する
 
 ### Better Auth と pnpm peer 解決
 
@@ -160,11 +198,11 @@
 
 ## まだやっていない・残作業（順不同）
 
-- **iPad実機確認後のUX仕上げ**：読み取り失敗時の導線・表示文言・戻りフローの微調整
+- **受付プロフィール画面の実機検証**：複数受付タブレットの同時利用、Wi-Fi 切断時の状態復帰
 - **運用リハーサル**：受付開始〜終了までの通し手順、ネットワーク障害時オペレーション確認
 - **昨年度データ反映**：匿名化済みデータの投入設計・整合性確認・ロールバック手順整備
 - **同時アクティベート採番衝突のリトライ実装**：`apps/api/src/lib/checkin.ts` TODO の解消
-- **Phase 1.5 系**：メンタースマホアプリ、活動ログ、CSVエクスポート等
+- **Phase 1.5 系**：メンタースマホアプリ（`apps/mentor` 未着手）、活動ログ、CSVエクスポート等
 
 ---
 
@@ -181,11 +219,13 @@ GOOGLE_OAUTH_CLIENT_ID=<google oauth client id>
 GOOGLE_OAUTH_CLIENT_SECRET=<secret>
 BETTER_AUTH_SECRET=<openssl rand -hex 32 で生成>
 BETTER_AUTH_URL=http://localhost:8787
-TRUSTED_ORIGINS=http://localhost:3001
+TRUSTED_ORIGINS=http://localhost:3000,http://localhost:3001
 ```
 
-`TRUSTED_ORIGINS` はカンマ区切り。`/api/*` の CORS と Better Auth の trustedOrigins
-の両方で使われる。本番では admin の Vercel URL を Worker secret に登録済み。
+`TRUSTED_ORIGINS` はカンマ区切り。`/api/*` と `/checkin/*` の CORS と Better Auth の
+trustedOrigins の3か所で使われる。`/checkin/*` も Cookie 認証必須になったので、
+checkin の Vercel URL も本番 Worker secret に含めること。本番では admin / checkin の
+Vercel URL を両方 Worker secret に登録済み。
 
 ## ユーザーの作業スタイルメモ
 
@@ -199,3 +239,60 @@ TRUSTED_ORIGINS=http://localhost:3001
 - **CLI ツールはローカル devDep**：wrangler 等をグローバルに入れない
 - **Public リポジトリ運用**：シークレット類は `wrangler secret put` または
   Vercel 環境変数。`.env.example` には変数名のみ
+
+---
+
+## 氏名（fullName）追加リリース手順（2026-05-13 着手）
+
+参加者データに **氏名（本名）** を追加した。学生側スプシは **B列に氏名を挿入** し、既存
+列を1つずつ右にシフト（A=preRegId / B=氏名 / C=ニックネーム / D=学年 / E=事前登録日 /
+F=内製ID / G=アクティベート日時 / H=アクティベート済）。
+
+DBは `participants.full_name` を NOT NULL DEFAULT '' で追加。既存行は backfill する。
+
+**重要**: 新コード（A2:H 前提）が旧スプシ（A2:G）を読むと列マッピングがズレて読み書きが
+崩壊する。**必ず以下の順序で実施する**。途中で運用中の iPad / 管理画面からアクセスが
+あると不整合が出るのでメンテ枠を取る。
+
+### デプロイ順序
+
+1. **メンテモード**（運用停止時間枠を確保。iPad / admin から触らない）
+2. **学生側スプシを手動更新**:
+   1. `participants` シートで **B 列を挿入**（既存 B〜G が C〜H にシフトされる）
+   2. B1 セルに `氏名` ヘッダーを入力
+   3. 既存全行 B 列に教員管理スプシから氏名を転記（事前登録ID をキーに突合）
+3. **DB マイグレーション適用（remote）**:
+   ```bash
+   pnpm --filter @tecnova/api db:apply:remote
+   ```
+   `0002_early_network.sql` が `ALTER TABLE participants ADD full_name TEXT DEFAULT ''
+   NOT NULL` を適用する。
+4. **DB backfill**: スプシ B 列に入れた氏名を DB の `participants.full_name` に流す。
+   既存件数が少ないので 1 件ずつ手書きの SQL で十分:
+   ```bash
+   cd apps/api
+   npx wrangler d1 execute <DB_NAME> --remote --command "UPDATE participants SET full_name = '田中太郎' WHERE id = '26001'"
+   # ... 全件分繰り返す
+   ```
+   件数が増えてきたら `wrangler d1 execute --file backfill.sql` で一括投入する方が早い。
+5. **新コードをデプロイ**:
+   - api: `pnpm --filter @tecnova/api deploy`
+   - admin / checkin: 通常の Vercel デプロイ（main マージで自動）
+   - 順序は api → 各フロント。フロントは古い fullName 無しのレスポンスを Zod でリジェクト
+     するため、api が先に新形式を返す状態にしてから上げる
+6. **動作確認**:
+   - admin 事前登録の新規追加で 氏名・ニックネーム・学年・事前登録日 が入る
+   - スプシ A〜E 列に新規行が `preRegId / 氏名 / ニックネーム / 学年 / 事前登録日`
+     順で書き込まれていること
+   - iPad の「初めての方」一覧で氏名が表示されること
+   - 活性化後にスプシ F/G/H 列に internalId / activatedAt / TRUE が書かれていること
+   - QRスキャンで チェックイン/アウト の結果カードに氏名が出ること
+7. **メンテモード解除**
+
+### ロールバック手順
+
+- 万一フロントが落ちた場合、api は古いフロントとは互換しない（フロントが fullName
+  必須を期待）。**api を先に旧バージョンに戻す → スプシの B 列を再削除 → DB
+  migration を down**（drizzle-kit が生成する down SQL は無いので、`ALTER TABLE
+  participants DROP COLUMN full_name` を手書き）→ フロントを戻す、の順。
+- スプシ B 列を消す前にバックアップ（シート複製）を取ること。
