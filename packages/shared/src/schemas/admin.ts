@@ -121,7 +121,7 @@ export const updateMentorRequestSchema = z
     message: 'at least one of name, role, active is required',
   });
 
-// 受付対象学年（小1〜高3）。フロントのプルダウンと backend のバリデーションで
+// 受付対象学年（小1〜高3 + その他）。フロントのプルダウンと backend のバリデーションで
 // 同じソースを使うため shared から export する。出力スキーマ側は過去データとの
 // 後方互換のため `z.string()` のままにし、入力（create）でのみ enum を強制する。
 export const GRADES = [
@@ -137,6 +137,7 @@ export const GRADES = [
   '高1',
   '高2',
   '高3',
+  'その他',
 ] as const;
 export type Grade = (typeof GRADES)[number];
 export const gradeSchema = z.enum(GRADES);
@@ -165,7 +166,7 @@ export const preRegistrationsListResponseSchema = z.object({
 
 // preRegistrationId は backend が `PRE-{year}-{NNNN}` で自動採番するため、
 // リクエストには含めない（fool proof: admin の手入力ミスを防ぐ）。
-// grade は GRADES の enum で弾く（小1〜高3 以外を受け付けない）。
+// grade は GRADES の enum で弾く（小1〜高3 + その他 以外を受け付けない）。
 export const createPreRegistrationRequestSchema = z.object({
   fullName: z.string().trim().min(1).max(80),
   nickname: z.string().trim().min(1).max(40),

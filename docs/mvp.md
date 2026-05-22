@@ -234,7 +234,7 @@ async function getOrCreateTodayEvent(
 | A   | 事前登録ID         | text     | PRE-2026-0001 形式                 | 教員側       |
 | B   | 氏名               | text     | 本名（識別補助）                   | 教員側       |
 | C   | ニックネーム       | text     | メイン識別子                       | 教員側       |
-| D   | 学年               | text     | 小1, 小4, 中2 等                   | 教員側       |
+| D   | 学年               | text     | 小1, 小4, 中2, その他 等           | 教員側       |
 | E   | 事前登録日         | date     | YYYY-MM-DD                         | 教員側       |
 | F   | 内製ID             | text     | 26001 等（バックエンドが書き込み） | バックエンド |
 | G   | アクティベート日時 | datetime | YYYY-MM-DD HH:mm:ss（同上）        | バックエンド |
