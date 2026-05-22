@@ -226,18 +226,20 @@ function ActivatedPreRegistrationsTable({ items }: { items: ActivatedPreRegistra
   );
 }
 
-const DEFAULT_GRADE: Grade = '小1';
-
 function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<void> }) {
   const [fullName, setFullName] = useState('');
   const [nickname, setNickname] = useState('');
-  const [grade, setGrade] = useState<Grade>(DEFAULT_GRADE);
+  const [grade, setGrade] = useState<Grade | ''>('');
   const [registeredAt, setRegisteredAt] = useState(todayInJst());
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    if (!grade) {
+      toastError(new Error('学年を選択してください'), '入力内容を確認してください');
+      return;
+    }
     setBusy(true);
     try {
       const body: CreatePreRegistrationRequest = {
@@ -253,7 +255,7 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
       toastSuccess(`${created.preRegistrationId} を追加しました`);
       setFullName('');
       setNickname('');
-      setGrade(DEFAULT_GRADE);
+      setGrade('');
       setRegisteredAt(todayInJst());
       await onCreated();
     } catch (e) {
@@ -298,7 +300,7 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
               <Label>学年</Label>
               <Select value={grade} onValueChange={(value) => setGrade(value as Grade)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="選択してください" />
                 </SelectTrigger>
                 <SelectContent>
                   {GRADES.map((g) => (
