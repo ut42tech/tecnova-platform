@@ -14,6 +14,9 @@
 
 - 📘 [`docs/requirements.md`](./docs/requirements.md) — 全体構想・設計判断の根拠
 - 📗 [`docs/mvp.md`](./docs/mvp.md) — 実装ガイド（実装に直結する詳細仕様）
+- 📐 [`docs/architecture.md`](./docs/architecture.md) — 全体システム構成・拡張ロードマップ
+
+> 💡 開発を再開するときは、まず [`docs/handoff.md`](./docs/handoff.md) で進捗・既知の罠・残作業を確認してください。
 
 ---
 
@@ -110,7 +113,7 @@ APIサーバ（`apps/api`）は Cloudflare Workers で動作します。以下�
 ### 2. Better Auth on Workers の落とし穴
 
 - ✅ リクエスト毎に auth instance を生成する（middleware内で）
-- ✅ `ctx.waitUntil()` を必ず使う（レスポンス送信後のバックグラウンドタスク完了のため）
+- ⚠️ `ctx.waitUntil()` は「レスポンス送信後にバックグラウンド処理を走らせる場合」に使う。現状の auth 経路（`routes/auth.ts` / `middleware/auth.ts`）は Better Auth の DB 書き込みを `await` で完結させているため**未配線**。今後カスタム非同期フックや secondary storage などで遅延処理を足すときは、必ず `c.executionCtx.waitUntil()` を通すこと
 - ❌ グローバルスコープに auth instance を保持しない（接続ロックの問題）
 
 詳細: [`docs/mvp.md` 11.1節](./docs/mvp.md#111-better-auth-on-workers-でハマったら)
@@ -166,6 +169,45 @@ DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクシ�
 
 シークレット情報は `wrangler secret put` または Vercel環境変数で管理します。
 `.env.example` には変数名のみ記載してください。
+
+---
+
+## subagent / skill の活用方針
+
+このプロジェクトでは subagent と skill を**積極的に**活用する。
+以下のタスクでは、ユーザーに明示的に頼まれなくても該当ツールを使うこと。
+
+| タスク                                       | 使うもの                                                  |
+| -------------------------------------------- | --------------------------------------------------------- |
+| 3クエリ以上の横断的なコード探索・調査        | `Explore` subagent                                        |
+| 既存機能の深掘り（実行経路・依存の把握）      | `feature-dev:code-explorer` subagent                      |
+| 新機能の着手前（要件・設計の整理）            | `superpowers:brainstorming` → `feature-dev:code-architect` |
+| 実装（機能追加・バグ修正）                    | `superpowers:test-driven-development`                     |
+| バグ・テスト失敗・想定外挙動の調査            | `superpowers:systematic-debugging`                        |
+| 多段タスクの計画作成・実行                    | `superpowers:writing-plans` / `executing-plans`           |
+| 2つ以上の独立した調査・作業（並列化可能）      | `superpowers:dispatching-parallel-agents`                 |
+| 計画を分割して順次実装                        | `superpowers:subagent-driven-development`                 |
+| コードレビュー / PR レビュー                  | `feature-dev:code-reviewer` / `code-review:code-review`    |
+| マージ前の成果物レビュー依頼                  | `superpowers:requesting-code-review`                      |
+| レビュー指摘を受け取って対応                  | `superpowers:receiving-code-review`                       |
+| 完了・修正完了を宣言する前                    | `superpowers:verification-before-completion`              |
+| フロントの UI 構築（checkin / admin）         | `frontend-design` / `vercel:shadcn`                       |
+| Next.js の設計・デバッグ                      | `vercel:nextjs`                                           |
+| ライブラリ・SDK の最新ドキュメント確認        | context7 (MCP)                                            |
+
+**ガードレール（積極化しても守ること）：**
+
+- subagent は「並列化できる独立タスク」か「メインのコンテキストを汚さず大量の結果を処理したい」場合に使う。同じ調査をメインと subagent で二重にやらない。
+- skill は該当タスクの**着手前**に呼ぶ（process 系 brainstorming/debugging が先、implementation 系が後）。
+- 「常にミニマム・シンプルから始める」原則は維持する。ツールの起動自体が目的化しないよう、効果が薄い場面では無理に使わない。
+
+**Agent-Driven な標準フロー（大きめのタスク）：**
+
+1. 着手前に `superpowers:brainstorming` で要件・設計を詰める
+2. 多段なら `superpowers:writing-plans` で計画化 → `executing-plans` / `subagent-driven-development` で実行
+3. 独立した調査・作業が並んだら `superpowers:dispatching-parallel-agents` でまとめて並列ディスパッチ
+4. 実装は `superpowers:test-driven-development`、詰まったら `superpowers:systematic-debugging`
+5. 完了宣言の前に `superpowers:verification-before-completion`、必要に応じて `requesting-code-review`
 
 ---
 
@@ -225,6 +267,7 @@ npx wrangler secret put <SECRET_NAME>
 
 | 疑問                           | 参照先                             |
 | ------------------------------ | ---------------------------------- |
+| 全体システム構成・拡張ロードマップ | `docs/architecture.md`             |
 | なぜこの技術スタックなのか     | `docs/requirements.md` 10章        |
 | なぜこのデータモデルなのか     | `docs/requirements.md` 5章 + 付録A |
 | APIのリクエスト/レスポンス形式 | `docs/mvp.md` 6章                  |
