@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>tec-nova Nagasaki 統合管理プラットフォーム</strong>
+  <img src="./docs/images/tecnova-platform-header.png" alt="tec-nova Nagasaki Platform — Designed for Makerspaces" width="100%" />
 </p>
 
 <p align="center">
@@ -19,10 +19,22 @@
 
 ---
 
-長崎大学 NUTIC で開催される子ども向けファブリケーション活動 **「テクノバながさき」** の運営基盤プラットフォーム。
+## 📖 概要
 
-参加者のチェックイン / アウト、活動ログ記録、研究データ収集を統合的に支える内製システム。  
-API-first なアーキテクチャで、複数のクライアント（iPad チェックイン機 ・ メンタースマホ ・ 管理 PC）を同一バックエンドから提供します。
+`tecnova-platform` は、**メイカースペース向けに設計したモダンな Web プラットフォーム**です。子どもたちが自由に創作・ものづくりに取り組む施設の運営を、**受付（チェックイン / アウト）・参加者管理・研究データ収集** まで一気通貫で支えます。
+
+最初の導入先は **tec-nova Nagasaki**（長崎市と長崎大学による共同事業）。小学 1 年〜高校 3 年の子どもが 3D プリンタ・プログラミング・ロボット・3D モデリングなどに自由来場で取り組むファブリケーション活動です。
+
+- 🎯 **解決する課題** — 紙とスプレッドシートに依存していた受付・名簿照合・二重登録の混乱を、構造的に解消する
+- 🧩 **システム構成** — 1 つの API（Hono on Cloudflare Workers）＋ クライアント（iPad 受付 / 管理 PC）を同一バックエンドから提供する API-first 設計
+- 🔐 **プライバシー設計** — 住所・連絡先などの機微情報は内製 DB に持たず運営側の管理下に限定。保持するのは氏名・ニックネーム・学年のみ
+
+### 受付のしくみ
+
+1. 子どもがネームカードの **QR / バーコード** を iPad にかざす
+2. API が参加者 DB（Cloudflare D1）を照合し、**チェックイン / チェックアウトを自動判定**
+3. 初回来場者は事前登録情報からその場で **アクティベート（内製 ID 採番）**
+4. 管理 PC のダッシュボードで **当日の来場状況をリアルタイムに把握**
 
 ---
 
@@ -34,9 +46,7 @@ API-first なアーキテクチャで、複数のクライアント（iPad チ�
 
 ---
 
-## ✨ Features
-
-### Phase 1 — MVP（✅ 実装済み）
+## ✨ 主な機能
 
 | 機能                             | 説明                                                    |
 | -------------------------------- | ------------------------------------------------------- |
@@ -50,82 +60,7 @@ API-first なアーキテクチャで、複数のクライアント（iPad チ�
 | 📋 受付履歴 & 一括チェックアウト | 当日の全操作ログとワンタップ一括退場                    |
 | 📂 Drive 自動連携                | アクティベート時に GAS 経由で Drive フォルダ自動生成    |
 
-### Phase 1.5 — 運用開始後
-
-- 📝 メンタースマホアプリ（30 分グリッドのログ記入・未記入ハイライト）
-- 🏷️ 活動カテゴリ・機材マスタ管理
-- 📤 ログ CSV エクスポート
-
-### Phase 2 — 中長期
-
-- 🔍 振り返りシートの Vision LLM 経由 OCR 取り込み
-- 🌐 公開 API（混雑状況配信）
-- 📈 分析ダッシュボード（クラスター分析支援）
-
----
-
-## 🏗️ Architecture
-
-### システム全体図
-
-```mermaid
-graph TB
-    subgraph Clients["🖥️ クライアント"]
-        C1["📱 Checkin<br/><small>iPad PWA</small>"]
-        C2["📱 Mentor<br/><small>スマホ PWA</small><br/><small>(Phase 1.5)</small>"]
-        C3["💻 Admin<br/><small>PC ブラウザ</small>"]
-    end
-
-    subgraph Hosting["☁️ Vercel"]
-        V1["Next.js<br/>:3000"]
-        V2["Next.js<br/>(未着手)"]
-        V3["Next.js<br/>:3001"]
-    end
-
-    subgraph Edge["⚡ Cloudflare"]
-        API["Hono API<br/>Workers"]
-        D1[("D1<br/>SQLite")]
-    end
-
-    subgraph External["🔗 外部サービス"]
-        GS["Google Sheets<br/>API"]
-        GA["Google OAuth<br/>via Better Auth"]
-        GAS["GAS Webhook<br/>Drive 連携"]
-    end
-
-    C1 --> V1
-    C2 --> V2
-    C3 --> V3
-
-    V1 -- "REST (type-safe)" --> API
-    V2 -. "REST" .-> API
-    V3 -- "REST (type-safe)" --> API
-
-    API --> D1
-    API --> GS
-    API --> GA
-    API -. "waitUntil" .-> GAS
-```
-
-### リクエスト処理フロー
-
-```mermaid
-sequenceDiagram
-    participant iPad as 📱 iPad PWA
-    participant API as ⚡ Hono API
-    participant Auth as 🔐 Better Auth
-    participant D1 as 🗄️ D1 (SQLite)
-    participant GS as 📊 Google Sheets
-
-    iPad->>API: POST /checkin/activate
-    API->>Auth: Cookie 認証チェック
-    Auth-->>API: mentor 認証 OK
-    API->>GS: スプシから事前登録取得
-    GS-->>API: 参加者情報
-    API->>D1: participants INSERT + 採番
-    D1-->>API: 新規 ID (5桁)
-    API-->>iPad: { participantId, displayId }
-```
+> 今後のロードマップ・フェーズ計画は [`docs/requirements.md`](./docs/requirements.md)（スコープとフェーズ計画）と [`docs/handoff.md`](./docs/handoff.md)（進捗・残タスク）を参照してください。
 
 ---
 
@@ -161,6 +96,67 @@ sequenceDiagram
 
 ---
 
+## 🏗️ Architecture
+
+### システム全体図
+
+```mermaid
+graph TB
+    subgraph Clients["🖥️ クライアント"]
+        C1["📱 Checkin<br/><small>iPad PWA</small>"]
+        C3["💻 Admin<br/><small>PC ブラウザ</small>"]
+    end
+
+    subgraph Hosting["☁️ Vercel"]
+        V1["Next.js<br/>:3000"]
+        V3["Next.js<br/>:3001"]
+    end
+
+    subgraph Edge["⚡ Cloudflare"]
+        API["Hono API<br/>Workers"]
+        D1[("D1<br/>SQLite")]
+    end
+
+    subgraph External["🔗 外部サービス"]
+        GS["Google Sheets<br/>API"]
+        GA["Google OAuth<br/>via Better Auth"]
+        GAS["GAS Webhook<br/>Drive 連携"]
+    end
+
+    C1 --> V1
+    C3 --> V3
+
+    V1 -- "REST (type-safe)" --> API
+    V3 -- "REST (type-safe)" --> API
+
+    API --> D1
+    API --> GS
+    API --> GA
+    API -. "waitUntil" .-> GAS
+```
+
+### リクエスト処理フロー
+
+```mermaid
+sequenceDiagram
+    participant iPad as 📱 iPad PWA
+    participant API as ⚡ Hono API
+    participant Auth as 🔐 Better Auth
+    participant D1 as 🗄️ D1 (SQLite)
+    participant GS as 📊 Google Sheets
+
+    iPad->>API: POST /checkin/activate
+    API->>Auth: Cookie 認証チェック
+    Auth-->>API: mentor 認証 OK
+    API->>GS: スプシから事前登録取得
+    GS-->>API: 参加者情報
+    API->>D1: participants INSERT + 採番
+    D1-->>API: 新規 ID (5桁)
+    API-->>iPad: { participantId, nickname, checkedInAt }
+```
+
+---
+
 ## 📁 Repository Structure
 
 ```
@@ -192,7 +188,8 @@ tecnova-platform/
 │   └── ui/                        # 共通 UI (api-client / MeProvider / JST utils)
 ├── docs/
 │   ├── requirements.md            # 全体要件定義書
-│   ├── mvp.md                     # MVP 実装ガイド
+│   ├── mvp.md                     # MVP 実装仕様リファレンス
+│   ├── architecture.md            # 全体システム構成図・拡張ロードマップ
 │   └── handoff.md                 # セッション引き継ぎノート
 ├── biome.json
 ├── turbo.json
@@ -207,7 +204,8 @@ tecnova-platform/
 | ドキュメント                                        | 内容                                                                                                                                                                    |
 | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 📘 [`docs/requirements.md`](./docs/requirements.md) | プロジェクトの背景・目的、ステークホルダー、データモデル、API 設計方針、非機能要件、リスク管理、設計判断の根拠を網羅した全体要件定義書                                  |
-| 📗 [`docs/mvp.md`](./docs/mvp.md)                   | 最初の 2 週間で何をどう実装するかに集中した実装ガイド。Drizzle スキーマ、API 仕様、画面仕様、Google Sheets API 連携の詳細実装、セットアップ手順、トラブルシュートを含む |
+| 📗 [`docs/mvp.md`](./docs/mvp.md)                   | MVP（Phase 1）の実装仕様リファレンス。Drizzle スキーマ、API 仕様、画面仕様、Google Sheets API 連携の詳細実装、セットアップ手順、トラブルシュートを含む                 |
+| 📐 [`docs/architecture.md`](./docs/architecture.md) | 全体システム構成図と拡張ロードマップ。現行コンポーネントの責務分担と Phase 1.5 以降の拡張計画を俯瞰する                                                                 |
 | 📙 [`docs/handoff.md`](./docs/handoff.md)           | 開発引き継ぎノート。進捗ステータス・既知の罠と回避策・残タスクをまとめた実装者向けドキュメント                                                                          |
 
 ---
@@ -307,37 +305,6 @@ graph LR
 
 > [!NOTE]
 > Worker の Secrets（`GOOGLE_SERVICE_ACCOUNT_KEY` 等）は CI ではなく `wrangler secret put` で別途登録します。
-
----
-
-## 🗺️ Roadmap
-
-- [x] 設計・要件定義
-- [x] **Phase 1: MVP チェックインシステム**
-  - [x] モノレポ・CI/CD 基盤構築
-  - [x] Drizzle スキーマ + D1 マイグレーション
-  - [x] Google Sheets API 連携
-  - [x] Better Auth（Google OAuth）認証基盤
-  - [x] チェックイン iPad PWA アプリ
-  - [x] 「初めての方」フロー + 自動採番
-  - [x] QR スキャン + 手入力 + 名前検索
-  - [x] 受付履歴 + 一括チェックアウト
-  - [x] 管理ダッシュボード + 参加者一覧 + メンター管理
-  - [x] 事前登録管理（admin）
-  - [x] GAS Drive webhook 連携
-  - [x] shadcn/ui テーマ統一
-  - [x] 本番デプロイ（Workers + Vercel）
-  - [ ] フロントエンド UX の最終調整
-  - [ ] 本番運用手順の確定（リハーサル / Wi-Fi 断フォールバック）
-  - [ ] 昨年度データの D1 反映
-- [ ] **Phase 1.5: メンター業務支援**
-  - [ ] メンタースマホアプリ（`apps/mentor`）
-  - [ ] 活動ログ記入機能
-  - [ ] CSV エクスポート
-- [ ] **Phase 2: 中長期改善**
-  - [ ] 振り返りシート OCR
-  - [ ] 公開 API
-  - [ ] 分析ダッシュボード
 
 ---
 
