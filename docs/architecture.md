@@ -1,12 +1,14 @@
 # Tecnova Platform Architecture
 
-This document captures the current Tecnova Nagasaki operations platform and its
-planned expansion scope.
+This document maps the current Tecnova Nagasaki operations platform and its
+planned expansion scope. The first diagram is a compact current-state overview;
+the detailed map below it keeps the full current and planned scope in one Mermaid
+`architecture-beta` diagram. Brand logos are shown as badges because Mermaid
+icon packs require renderer-level registration.
 
-The first diagram is a compact current-state overview. The detailed map below it
-keeps the broader current and planned scope in one Mermaid `architecture-beta`
-diagram. Mermaid brand logos require renderer-level icon-pack registration, so
-the portable diagrams use text labels and the brand logos are shown as badges.
+See also: [`requirements.md`](./requirements.md) for design rationale,
+[`mvp.md`](./mvp.md) for implementation specs, and [`handoff.md`](./handoff.md)
+for current progress.
 
 ## Current Implementation Overview
 

@@ -116,7 +116,7 @@ APIサーバ（`apps/api`）は Cloudflare Workers で動作します。以下�
 - ⚠️ `ctx.waitUntil()` は「レスポンス送信後にバックグラウンド処理を走らせる場合」に使う。現状の auth 経路（`routes/auth.ts` / `middleware/auth.ts`）は Better Auth の DB 書き込みを `await` で完結させているため**未配線**。今後カスタム非同期フックや secondary storage などで遅延処理を足すときは、必ず `c.executionCtx.waitUntil()` を通すこと
 - ❌ グローバルスコープに auth instance を保持しない（接続ロックの問題）
 
-詳細: [`docs/mvp.md` 11.1節](./docs/mvp.md#111-better-auth-on-workers-でハマったら)
+詳細: [`docs/mvp.md` 10.1節](./docs/mvp.md#101-better-auth-on-workers-でハマったら)
 
 ### 3. Google Sheets API の実装方針
 
@@ -273,7 +273,7 @@ npx wrangler secret put <SECRET_NAME>
 | APIのリクエスト/レスポンス形式 | `docs/mvp.md` 6章                  |
 | 画面遷移・UI仕様               | `docs/mvp.md` 7章                  |
 | 既知のリスク・対策             | `docs/requirements.md` 12章        |
-| トラブルシュート               | `docs/mvp.md` 11章                 |
+| トラブルシュート               | `docs/mvp.md` 10章                 |
 | 設計判断の根拠                 | `docs/requirements.md` 付録A       |
 
 判断に迷うことがあれば、まず上記を確認してから提案・実装してください。

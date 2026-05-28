@@ -1,8 +1,9 @@
-# セッション引き継ぎノート（2026-05-13時点）
+# セッション引き継ぎノート（2026-05-28時点）
 
 新しい Claude セッションがこのリポジトリで作業を再開するときの起点。
 このファイルは「今ここまで来ている」を素早く把握するためのもの。詳細仕様は引き続き
-[`requirements.md`](./requirements.md) と [`mvp.md`](./mvp.md) が正典。
+[`requirements.md`](./requirements.md)・[`mvp.md`](./mvp.md)・[`architecture.md`](./architecture.md)
+が正典。
 
 ---
 
@@ -10,45 +11,49 @@
 
 ### 完了済み（main にマージ済み）
 
-`docs/mvp.md` 9章のスケジュール基準で：
+Phase 1（MVP）は本番デプロイ済みで稼働中。主要な完了項目と参照 PR / commit：
 
-| Day | 内容 | PR |
-| --- | --- | --- |
-| W1 Day 1-2 | モノレポ初期化（pnpm + Turborepo + Biome） | #1 |
-| - | docs 更新（Neon → Cloudflare D1 へ DB 切り替え） | direct commit |
-| W1 Day 3 | `packages/db` Drizzle/SQLite スキーマ + 初期マイグレーション | #2 |
-| W1 Day 4 | `apps/api` Hono on Workers + D1 binding + `/health` | #3 |
-| W1 Day 5 | `packages/shared/src/google-sheets.ts` + `/sheets/health` | #4 |
-| W1 Day 6-7 | 「初めての方」フロー（API + iPad UI） | #5 |
-| W2 Day 8 | check-in / check-out / scan エンドポイント | #6 |
-| W2 Day 8 | 手入力フォーム UI（QR は将来差し替え） | #7 |
-| W2 Day 11 | Better Auth 基盤（schema + `/api/auth/*` + middleware） | #8 |
-| W2 Day 11 | `apps/admin` ログイン画面 + Better Auth client | #9 |
-| - | Bug fix: ログイン後に admin オリジンへ戻すよう callbackURL を絶対URL化 | #10 |
-| - | API CORS/trustedOrigins を env 経由で設定可能化（本番デプロイ準備） | direct commit `9ad8603` |
-| W2 Day 10 | `/api/sessions/today` + `/api/participants` 参照系API | #11 |
-| W2 Day 10 | `/api/mentors` CRUD（admin role guard） | #12 |
-| W2 Day 10 | 管理ダッシュボード（当日セッション一覧） | #13, #16 |
-| W2 Day 10 | 参加者一覧 + メンター管理画面 | #14 |
-| W2 Day 9 | checkin の PWA 化（manifest, apple-icon, viewport） | #15 |
-| - | 事前登録管理ページ（admin） + grade enum 制約 | #23 |
-| W2 Day 9 | checkin に opt-in QR スキャン + 確認クッション追加 | feat/checkin-qr-scanner |
-| - | shadcn/ui へ全置換、Maia テーマ適用 | #25, #26 |
-| - | API ルートを `routes/` + `middleware/` にモジュール分割 | #27, 859208d |
-| - | checkin: 手入力ページ・受付プロフィール画面・出席タイル | 8e60249, 2e91f68, cdcc8d0 |
-| - | checkin: 受付履歴 + 一括チェックアウト | 8ad5d51, f609c5b |
-| - | checkin: ログイン画面と設定画面、ガイドラインページ | f8e59fd, 264f970 |
-| - | checkin に GAS Drive folder webhook 連携（アクティベート時に Drive フォルダ自動生成） | 488f42d |
-| - | checkin: マニュアル入力に「名前で探す」モード + `/checkin/participants/search` | d21ed3a |
-| - | フロント共通コードを `@tecnova/ui` に集約（api-client / MeProvider / JST フォーマッタ） | eac8560, cbddf77, 9e97694 |
+| 内容 | PR / commit |
+| --- | --- |
+| モノレポ初期化（pnpm + Turborepo + Biome） | #1 |
+| docs 更新（Neon → Cloudflare D1 へ DB 切り替え） | direct commit |
+| `packages/db` Drizzle/SQLite スキーマ + 初期マイグレーション | #2 |
+| `apps/api` Hono on Workers + D1 binding + `/health` | #3 |
+| `packages/shared/src/google-sheets.ts` + `/sheets/health` | #4 |
+| 「初めての方」フロー（API + iPad UI） | #5 |
+| check-in / check-out / scan エンドポイント | #6 |
+| 手入力フォーム UI（QR は将来差し替え） | #7 |
+| Better Auth 基盤（schema + `/api/auth/*` + middleware） | #8 |
+| `apps/admin` ログイン画面 + Better Auth client | #9 |
+| Bug fix: ログイン後に admin オリジンへ戻すよう callbackURL を絶対URL化 | #10 |
+| API CORS/trustedOrigins を env 経由で設定可能化（本番デプロイ準備） | direct commit `9ad8603` |
+| `/api/sessions/today` + `/api/participants` 参照系API | #11 |
+| `/api/mentors` CRUD（admin role guard） | #12 |
+| 管理ダッシュボード（当日セッション一覧） | #13, #16 |
+| 参加者一覧 + メンター管理画面 | #14 |
+| checkin の PWA 化（manifest, apple-icon, viewport） | #15 |
+| 事前登録管理ページ（admin） + grade enum 制約 | #23 |
+| checkin に opt-in QR スキャン + 確認クッション追加 | feat/checkin-qr-scanner |
+| shadcn/ui へ全置換、Maia テーマ適用 | #25, #26 |
+| API ルートを `routes/` + `middleware/` にモジュール分割 | #27, 859208d |
+| checkin: 手入力ページ・受付プロフィール画面・出席タイル | 8e60249, 2e91f68, cdcc8d0 |
+| checkin: 受付履歴 + 一括チェックアウト | 8ad5d51, f609c5b |
+| checkin: ログイン画面と設定画面、ガイドラインページ | f8e59fd, 264f970 |
+| checkin に GAS Drive folder webhook 連携（アクティベート時に Drive フォルダ自動生成） | 488f42d |
+| checkin: マニュアル入力に「名前で探す」モード + `/checkin/participants/search` | d21ed3a |
+| フロント共通コードを `@tecnova/ui` に集約（api-client / MeProvider / JST フォーマッタ） | eac8560, cbddf77, 9e97694 |
+| 参加者データに 氏名（fullName）追加（スプシ B 列挿入・DB backfill） | リリース手順ログ参照 |
+| 学年に `その他` を追加、旧値 `卒業` を移行 | `062378c`、リリース手順ログ参照 |
+| CI/CD 整備（`ci.yml` / `deploy-api.yml`） | `.github/workflows/` |
+| 本番デプロイ（Worker + admin + checkin、OAuth まで動作確認済み） | — |
 
-**Day 10 と Day 11 を意図的に入れ替えた**（Day 11 = Better Auth を先に）。理由は Day 10 の
-`/api/*` 系エンドポイントが認証必須で、後から auth を retrofit するより auth 基盤を先に
-通したほうが安全だったため。詳細は PR #8 の本文。
+**設計上の判断メモ：**
 
-**`/checkin/*` も Cookie 認証必須に格上げ**（5月の改修で）。受付端末は子どもが直接
-触る端末ではなく受付メンターの端末である前提に倒し、`apiCors` + `requireAuthenticatedMentor`
-を `/api/*` と同じく適用している（`apps/api/src/index.ts`）。
+- **Better Auth を `/api/*` 参照系より先に実装した**。`/api/*` 系エンドポイントが認証必須で、
+  後から auth を retrofit するより auth 基盤を先に通したほうが安全だったため。詳細は PR #8 の本文。
+- **`/checkin/*` も Cookie 認証必須に格上げ**（5月の改修で）。受付端末は子どもが直接
+  触る端末ではなく受付メンターの端末である前提に倒し、`apiCors` + `requireAuthenticatedMentor`
+  を `/api/*` と同じく適用している（`apps/api/src/index.ts`）。
 
 ### 現状動作している範囲
 
@@ -112,23 +117,30 @@
 
 ---
 
-## 次に取り掛かるフェーズ
+## 次に取り掛かるフェーズ（残タスク）
 
-**MVP仕上げ（運用開始前の最終調整）**
+Phase 1（MVP）はデプロイ済み・稼働中。残るのは運用開始前の最終調整と、その後の Phase 1.5。
 
-5月初旬以降のリファクタ・新機能でフロントの操作モデルは「QR → 受付プロフィール
-画面で確定」に揃った。残タスクは以下：
+### MVP 仕上げ（運用開始前の最終調整）
 
-1. **受付プロフィール画面の本番リハーサル**
-   - 同時タップ / Wi-Fi 切断時の挙動を実機で確認
+操作モデルは「QR → 受付プロフィール画面で確定」に揃っている。残タスク：
+
+1. **受付プロフィール画面の本番リハーサル / 実機検証**
+   - 複数受付タブレットの同時利用、同時タップ / Wi-Fi 切断時の挙動・状態復帰を実機で確認
    - 「チェックインしました」のフィードバック視認性、戻る導線
 2. **同時アクティベート時の採番衝突リトライ**
-   - `apps/api/src/lib/checkin.ts` の TODO。最大3回のリトライ
+   - `apps/api/src/lib/checkin.ts` の TODO。PK 衝突時に最大3回のリトライ（現状は手動再試行で運用）
 3. **運用手順の確定**
-   - Wi-Fi断フォールバック、当日オペレーション、権限者向け手順を文書化
-4. **昨年度データのD1反映**
+   - Wi-Fi 断フォールバック、受付開始〜終了の通し手順、権限者向け手順を文書化
+4. **昨年度データの D1 反映**
    - 個人情報を持ち込まず、participants / events / sessions の最小構成で移行
-   - JST/UTC変換と参照整合（participant_id, event_id）を検証
+   - JST/UTC 変換と参照整合（participant_id, event_id）を検証、ロールバック手順整備
+
+### Phase 1.5（運用開始後）
+
+- メンタースマホアプリ（`apps/mentor` — 未着手。30 分グリッドのログ記入・未記入ハイライト）
+- 活動ログ記入機能、活動カテゴリ・機材マスタ管理
+- ログ CSV エクスポート
 
 ---
 
@@ -161,7 +173,7 @@
 - `wrangler.toml` に `compatibility_flags = ["nodejs_compat"]` 必須
   （`AsyncLocalStorage` を使うため）
 - auth instance は **リクエスト毎に生成**。グローバル/モジュールスコープで
-  保持しない（接続ロック問題、`docs/mvp.md` 11.1 / `CLAUDE.md`「重要な制約 2」）
+  保持しない（接続ロック問題、`docs/mvp.md` 10.1 / `CLAUDE.md`「重要な制約 2」）
 - `apps/api/src/lib/auth.ts` の `createAuth(env)` ファクトリがそれ
 
 ### サービスアカウント鍵は base64 ラップ
@@ -193,16 +205,6 @@
 
 - `docs/mvp.md` の初期版は `[vars]` だったが Public リポジトリ運用方針と
   矛盾するため Secret 扱いに統一（PR #4 のドキュメント更新）
-
----
-
-## まだやっていない・残作業（順不同）
-
-- **受付プロフィール画面の実機検証**：複数受付タブレットの同時利用、Wi-Fi 切断時の状態復帰
-- **運用リハーサル**：受付開始〜終了までの通し手順、ネットワーク障害時オペレーション確認
-- **昨年度データ反映**：匿名化済みデータの投入設計・整合性確認・ロールバック手順整備
-- **同時アクティベート採番衝突のリトライ実装**：`apps/api/src/lib/checkin.ts` TODO の解消
-- **Phase 1.5 系**：メンタースマホアプリ（`apps/mentor` 未着手）、活動ログ、CSVエクスポート等
 
 ---
 

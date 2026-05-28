@@ -1,43 +1,52 @@
-# tecnova-platform MVP実装ガイド
+# tecnova-platform 実装仕様リファレンス（MVP / Phase 1）
 
-| 項目                   | 内容                                                                     |
-| ---------------------- | ------------------------------------------------------------------------ |
-| ドキュメントバージョン | v1.4                                                                     |
-| 想定運用開始           | 2026年5月中旬                                                            |
-| 関連ドキュメント       | [`requirements.md`](./requirements.md)（全体構想・将来構想を含む完全版） |
+| 項目                   | 内容                                                                       |
+| ---------------------- | -------------------------------------------------------------------------- |
+| ドキュメントバージョン | v1.5                                                                       |
+| ステータス             | Phase 1（MVP）として実装済み・本番稼働中                                    |
+| 設計判断の根拠         | [`requirements.md`](./requirements.md)（全体構想・将来構想を含む完全版）   |
+| システム構成図         | [`architecture.md`](./architecture.md)（コンポーネント構成・拡張ロードマップ） |
+| 進捗・運用手順         | [`handoff.md`](./handoff.md)（残作業・既知の罠・セッション引き継ぎ）        |
 
 ---
 
 ## 1. このドキュメントの目的
 
-[`requirements.md`](./requirements.md) が「全体構想と将来も含む正典」であるのに対し、本ドキュメントは**最初の実装フェーズで何を作るか**だけに集中した実装ガイドである。
+本ドキュメントは、Phase 1（MVP）として**実装済みで本番稼働している仕様の現状リファレンス**である。
+データモデル・API契約・画面構成・セットアップ手順を、実コードに準拠した形で一箇所にまとめる。
 
-ここに書かれたものを作れば、テクノバながさきの運用開始に間に合う。書かれていないものは作らない。
+役割分担は以下の通り：
 
-**Claude Codeでの実装を想定**しており、各セクションは実装に直結する粒度で記述されている。
+- **このドキュメント（mvp.md）** — 「いま何がどう実装されているか」という具体仕様（spec 本体）
+- [`requirements.md`](./requirements.md) — なぜこの設計なのか（設計判断の根拠・将来構想）
+- [`architecture.md`](./architecture.md) — システム全体の構成図・拡張ロードマップ
+- [`handoff.md`](./handoff.md) — 進捗・残作業・運用手順・既知の罠
+
+仕様を変更するときは、まず本書を更新してからコードに反映する（ドキュメント先行）。
 
 ---
 
-## 2. MVPゴール
+## 2. Phase 1（MVP）のゴール
 
-**「子どもがiPadでチェックイン・チェックアウトでき、初回来場者は事前登録情報からアクティベートできる」状態を実現する。**
-
-これが達成されれば、運用は始められる。活動ログ等のメンター業務は引き続き従来通りスプシ運用で並行し、Phase 1.5で実装していく。
+Phase 1 では**「子どもがiPad受付端末でチェックイン・チェックアウトでき、初回来場者は事前登録情報からアクティベートできる」**状態を実装し、本番稼働している。
+活動ログ等のメンター業務は引き続き従来通りスプシ運用で並行し、Phase 1.5 以降で順次実装していく。
 
 ---
 
 ## 3. スコープ
 
-### 3.1 含むもの（MVPで実装）
+Phase 1（MVP）の実装範囲と、意図的に含めていない範囲を示す。
+
+### 3.1 実装済み（Phase 1）
 
 ✅ バックエンドAPI基盤（Hono on Cloudflare Workers）
 ✅ DB環境（Cloudflare D1 + Drizzle ORM）
 ✅ 4テーブルのスキーマとマイグレーション（participants / events / sessions / mentors）
 ✅ Google Sheets API連携（学生側スプシの読み書き）
-✅ チェックインiPadアプリ（PWA・QR/バーコードスキャン）
+✅ チェックインiPadアプリ（PWA・QRスキャン）
 ✅ 「初めての方」フロー（一覧表示・選択・ID採番・スプシ書き戻し）
 ✅ 通常チェックイン/チェックアウト
-✅ 管理画面（最小限：当日の来場状況・参加者一覧・メンター管理・ログイン）
+✅ 管理画面（当日の来場状況・参加者一覧・事前登録管理・メンター管理・ログイン）
 ✅ Google OAuth認証（Better Auth・許可リスト方式）
 
 ### 3.2 含まないもの（Phase 1.5以降）
@@ -56,9 +65,11 @@
 
 ## 4. データモデル
 
+> Cloudflare D1（SQLite）上の 4 テーブル（participants / events / sessions / mentors）と、内製ID採番・events 自動生成のロジックを示す。Better Auth コアテーブルは別管理。
+
 ### 4.1 Drizzleスキーマ
 
-`packages/db/src/schema.ts` に以下を実装する。D1 は SQLite ベースなので `drizzle-orm/sqlite-core` を使う。
+アプリ用スキーマは `packages/db/src/schema.ts` に実装されている。D1 は SQLite ベースなので `drizzle-orm/sqlite-core` を使う。
 
 ```typescript
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
@@ -67,6 +78,9 @@ import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 export const participants = sqliteTable("participants", {
   id: text("id").primaryKey(), // 例: '26001'
   preRegistrationId: text("pre_registration_id").unique().notNull(),
+  // 氏名（本名）。識別補助でメイン識別子はニックネーム。
+  // 既存行のために default '' を残し、新規は API 層が min(1) で弾く。
+  fullName: text("full_name").default("").notNull(),
   nickname: text("nickname").notNull(),
   grade: text("grade").notNull(),
   // タイムスタンプは UTC の Unix epoch ms で保存し、表示時に JST 変換
@@ -147,12 +161,19 @@ export const mentors = sqliteTable("mentors", {
 - `enum` は `text` の値域制約として表現される（マイグレーション SQL では CHECK 制約）
 - 外部キー制約は D1 でデフォルト ON。`PRAGMA foreign_keys = ON;` 不要
 
+**マイグレーション履歴**（`packages/db/drizzle/` に生成される SQL）:
+
+- `0000_wet_agent_brand` — 初期 4 テーブル
+- `0001` — 追加調整
+- `0002_early_network` — participants に `full_name` 列を追加
+- `0003_graduated_grade_to_other` — grade の `'卒業'` を `'その他'` へ移行（`'卒業'` は廃止）
+
 ### 4.2 ID採番ロジック
 
 ```typescript
 // 例: 2026年度なら "26" + 連番（001から）
 // D1 はインタラクティブ・トランザクションがないため、SELECT で直近IDを取得 →
-// 計算 → INSERT の流れで実装。PK 衝突時は再採番リトライで対応する。
+// 計算 → INSERT の流れで実装する。PK 衝突時の自動リトライは現行未実装（下記注記参照）。
 
 import { desc, like } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -225,6 +246,8 @@ async function getOrCreateTodayEvent(
 
 ## 5. 学生側スプシ仕様
 
+> 事前登録は教員側が学生側スプシ（`participants` シート）で管理する。バックエンドはこのシートを Source of Truth として読み書きする。Workers では `googleapis` が使えないため、Web Crypto による自前JWT + fetch 直叩きで実装している（実体は `packages/shared/src/google-sheets.ts`）。
+
 ### 5.1 シート構成
 
 シート名: `participants`
@@ -247,8 +270,8 @@ async function getOrCreateTodayEvent(
 **読み取り**:
 
 - `GET https://sheets.googleapis.com/v4/spreadsheets/{id}/values/participants!A2:H` で全データ取得
-- レスポンスを配列にパースし、Hが `FALSE` または空のレコードをフィルタ
-- 5秒キャッシュ（Workers Cache APIまたはmoduleスコープのMap）
+- レスポンスを配列にパースし、Hが `FALSE` または空のレコードを「未アクティベート」としてフィルタ
+- 行データの読み取りキャッシュは持たず毎回フェッチする（アクセストークンのみ 1 時間キャッシュ）
 
 **書き込み**:
 
@@ -285,6 +308,31 @@ Google Cloud Consoleで：
    echo 'GOOGLE_SHEETS_ID=1AbCdEf...' >> apps/api/.dev.vars
    ```
 
+### 5.4 Workers環境でのGoogle Sheets API実装
+
+`googleapis` パッケージはNode.js依存のためWorkersで動かない。**Web Crypto APIで自前JWT生成 + fetch直叩き**で対応している。実装は `packages/shared/src/google-sheets.ts` を参照。
+
+公開している関数:
+
+| 関数                                                       | 用途                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| `getCachedAccessToken(encodedKey)`                         | サービスアカウントJWTでアクセストークンを取得（1時間キャッシュ） |
+| `fetchSheetRows(encodedKey, spreadsheetId, range)`         | 指定レンジを2次元配列で読む                                      |
+| `updateSheetRow(encodedKey, spreadsheetId, range, values)` | `valueInputOption=USER_ENTERED` で1行を書き込み                  |
+| `appendSheetRows(encodedKey, spreadsheetId, range, rows)`  | 末尾に行を追加（事前登録の新規行追加）                           |
+| `clearSheetRange(encodedKey, spreadsheetId, range)`        | レンジをクリア（事前登録行の削除）                               |
+
+**重要な設計判断**:
+
+- 第1引数は **base64 エンコード済みのサービスアカウントJSON文字列**を受け取る。コード内で `atob` → `JSON.parse` の順にデコードする。`.dev.vars` の dotenv パーサが `\n` を実改行に変換して `JSON.parse` が壊れる問題を回避するため
+- アクセストークンはモジュールスコープでキャッシュ（`expiresAt > now + 60s` の条件で再利用）。Workers インスタンスがリサイクルされたら自然に再生成される
+- 鍵の PEM ヘッダー除去 → `crypto.subtle.importKey('pkcs8', ...)` → RS256 署名 → JWT 組み立て、の順
+- エラー時は HTTP ステータス + 本文を含む例外を投げる（呼び出し側で saga の補償処理を判断するため）
+
+**なぜ base64 なのか**: 生 JSON を `.dev.vars` に書くと、dotenv パーサが `private_key` 内の `\n` エスケープを実改行に変換してしまい、Worker 側で `JSON.parse` が「Bad control character」で失敗する。base64 でラップしておけば dotenv は手を加えず、コード側で `atob` → `JSON.parse` の順に処理できる。
+
+疎通確認は `apps/api` の `/sheets/health` エンドポイント（参加者シートの行数を返す）で行える。
+
 ### 5.5 参加者 Drive フォルダの自動作成（GAS webhook）
 
 アクティベート成功時、参加者ごとの作品保存用 Google Drive フォルダを GAS（Apps
@@ -305,34 +353,18 @@ Script）の Web App エンドポイント経由で作成する。
   両方が未設定の場合は機能ごと無効化される（`url && secret` が揃わないと no-op）。
   片方だけ設定されている場合は `console.warn` を出してスキップする（fail-closed）。
 
-**なぜ base64 なのか**: 生 JSON を `.dev.vars` に書くと、dotenv パーサが `private_key` 内の `\n` エスケープを実改行に変換してしまい、Worker 側で `JSON.parse` が「Bad control character」で失敗する。base64 でラップしておけば dotenv は手を加えず、コード側で `atob` → `JSON.parse` の順に処理できる。
-
-### 5.4 Workers環境でのGoogle Sheets API実装
-
-`googleapis` パッケージはNode.js依存のためWorkersで動かない。**Web Crypto APIで自前JWT生成 + fetch直叩き**で対応する。実装は `packages/shared/src/google-sheets.ts` を参照。
-
-公開している関数:
-
-| 関数                                                       | 用途                                                             |
-| ---------------------------------------------------------- | ---------------------------------------------------------------- |
-| `getCachedAccessToken(encodedKey)`                         | サービスアカウントJWTでアクセストークンを取得（1時間キャッシュ） |
-| `fetchSheetRows(encodedKey, spreadsheetId, range)`         | 指定レンジを2次元配列で読む                                      |
-| `updateSheetRow(encodedKey, spreadsheetId, range, values)` | `valueInputOption=USER_ENTERED` で書き込み                       |
-
-**重要な設計判断**:
-
-- 第1引数は **base64 エンコード済みのサービスアカウントJSON文字列**を受け取る。コード内で `atob` → `JSON.parse` の順にデコードする。`.dev.vars` の dotenv パーサが `\n` を実改行に変換して `JSON.parse` が壊れる問題を回避するため
-- アクセストークンはモジュールスコープでキャッシュ（`expiresAt > now + 60s` の条件で再利用）。Workers インスタンスがリサイクルされたら自然に再生成される
-- 鍵の PEM ヘッダー除去 → `crypto.subtle.importKey('pkcs8', ...)` → RS256 署名 → JWT 組み立て、の順
-- エラー時は HTTP ステータス + 本文を含む例外を投げる（呼び出し側で saga の補償処理を判断するため）
-
-**初週でPoCを完了させること。** これがハマると全体が止まる。動作確認は `apps/api` の `/sheets/health` エンドポイント（参加者シートの行数を返す）で行える。
-
 ---
 
 ## 6. APIエンドポイント仕様
 
-すべてのレスポンスは JSON。エラー時は HTTP 4xx/5xx + `{ "error": "ERROR_CODE", "message": "..." }`。
+> Hono on Workers の実装エンドポイント一覧。`apps/api/src/routes/` 配下にモジュール単位（health / auth / checkin / admin / pre-registrations）で実装され、契約は `packages/shared/src/schemas/`（checkin.ts / admin.ts）の Zod スキーマで定義される。
+
+すべてのレスポンスは JSON。エラー時は `apiErrorHandler`（`apps/api/src/lib/errors.ts`）が HTTP 4xx/5xx + `{ "error": "ERROR_CODE", "message": "..." }` の封筒を返す。
+
+**認証なしで叩けるのは `/health` 系のみ**：
+
+- `GET /health` — 参加者数と status を返す疎通確認
+- `GET /sheets/health` — 参加者シートの行数を返すスプシ疎通確認
 
 ### 6.1 受付端末用（`/checkin/*`・メンター認証必須）
 
@@ -358,6 +390,7 @@ CORS / 認証ミドルウェアは `apps/api/src/index.ts` で `/api/*` と `/ch
   "participants": [
     {
       "preRegistrationId": "PRE-2026-0042",
+      "fullName": "山田拓也",
       "nickname": "たくや",
       "grade": "小4",
       "registeredAt": "2026-04-15"
@@ -366,7 +399,7 @@ CORS / 認証ミドルウェアは `apps/api/src/index.ts` で `/api/*` と `/ch
 }
 ```
 
-注: 登録日新しい順にソート。
+注: 登録日（`registeredAt`）新しい順にソート。
 
 #### `POST /checkin/activate`
 
@@ -383,6 +416,7 @@ CORS / 認証ミドルウェアは `apps/api/src/index.ts` で `/api/*` と `/ch
 ```json
 {
   "participantId": "26001",
+  "fullName": "山田拓也",
   "nickname": "たくや",
   "grade": "小4",
   "checkedInAt": "2026-05-15T09:32:15+09:00"
@@ -399,7 +433,7 @@ CORS / 認証ミドルウェアは `apps/api/src/index.ts` で `/api/*` と `/ch
 
 D1 にはインタラクティブ・トランザクションがないため、「DB書き込み → スプシ書き戻し → 失敗時は補償処理」のフローで原子性に近い保証を作る。
 
-1. 事前登録IDから当該行をスプシで検索（または読み取りキャッシュから）。なければ `NOT_FOUND`
+1. 事前登録IDから当該行をスプシで検索（`fetchSheetRows`）。なければ `NOT_FOUND`
 2. 内製ID採番（`generateNextParticipantId`）
 3. event_id を取得 or 作成（`getOrCreateTodayEvent`）
 4. **`db.batch([...])` で原子的に書き込み**:
@@ -430,6 +464,7 @@ QR/バーコードスキャンによるチェックイン（既存参加者）�
 ```json
 {
   "sessionId": "uuid-...",
+  "fullName": "山田拓也",
   "nickname": "たくや",
   "checkedInAt": "2026-05-15T09:32:15+09:00"
 }
@@ -462,6 +497,7 @@ QR/バーコードスキャンによるチェックアウト。
 
 ```json
 {
+  "fullName": "山田拓也",
   "nickname": "たくや",
   "checkedInAt": "2026-05-15T09:32:15+09:00",
   "checkedOutAt": "2026-05-15T12:45:00+09:00",
@@ -495,7 +531,10 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 - `26001` 形式（5桁・年度2桁+連番）→ 当日チェックイン状態を確認し、未チェックインならcheck-in、チェックイン中ならcheck-outを実行
 - それ以外 → `INVALID_SCAN_VALUE` エラー
 
-**レスポンス**: チェックイン or チェックアウトと同じ。`action: "check_in" | "check_out"` を含める。
+**レスポンス**: `scanResponseSchema`（`action` で判別する discriminated union）。`fullName` / `nickname` を含む。
+
+- `action: "check_in"` → `{ action, sessionId, fullName, nickname, checkedInAt }`
+- `action: "check_out"` → `{ action, fullName, nickname, checkedInAt, checkedOutAt, stayDurationMinutes }`
 
 #### `GET /checkin/history/today`
 
@@ -525,6 +564,7 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
   "participants": [
     {
       "participantId": "26001",
+      "fullName": "山田拓也",
       "nickname": "たくや",
       "checkedInAt": "2026-05-15T09:32:15+09:00",
       "checkedOutAt": "2026-05-15T12:30:00+09:00",
@@ -536,9 +576,9 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 
 #### `GET /checkin/participants/search`
 
-ニックネーム部分一致で active な参加者を検索する。マニュアル入力画面の
-「名前で探す」モードで使う。`/api/participants` と違って admin 権限不要・
-ページネーションなし・active=true のみ。
+**ニックネームと氏名（fullName）の両方**を LIKE 部分一致で検索し、active な参加者を
+返す。マニュアル入力画面の「名前で探す」モードで使う。`/api/participants` と違って
+admin 権限不要・ページネーションなし・active=true のみ・最大 50 件。
 
 **クエリ**: `?q=<1〜40文字>`
 
@@ -546,7 +586,9 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 
 ```json
 {
-  "participants": [{ "id": "26001", "nickname": "たくや", "grade": "小4" }]
+  "participants": [
+    { "id": "26001", "fullName": "山田拓也", "nickname": "たくや", "grade": "小4" }
+  ]
 }
 ```
 
@@ -563,6 +605,7 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 {
   "participant": {
     "id": "26001",
+    "fullName": "山田拓也",
     "nickname": "たくや",
     "grade": "小4",
     "activatedAt": "2026-04-20T09:10:00+09:00"
@@ -598,11 +641,31 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 
 **レスポンス**: `/checkin/scan` と同じ `scanResponseSchema`。
 
-### 6.2 認証あり（管理画面用）
+### 6.2 管理画面用（`/api/*`・メンター認証必須）
+
+`/api/*` も `/checkin/*` と同じ Cookie ベースの mentor 認証で守る。一部は admin role 専用。
+
+#### `GET /api/me`
+
+ログイン中のユーザーとメンター情報を返す。
+
+**レスポンス**:
+
+```json
+{
+  "user": { "id": "...", "email": "mentor@example.com", "name": "山田太郎" },
+  "mentor": {
+    "id": "...",
+    "email": "mentor@example.com",
+    "name": "山田太郎",
+    "role": "admin"
+  }
+}
+```
 
 #### `GET /api/sessions/today`
 
-当日の来場状況一覧。
+当日の来場状況一覧。当日の event がまだ無い場合は `event` が `null`。
 
 **レスポンス**:
 
@@ -613,6 +676,7 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
     {
       "sessionId": "uuid-...",
       "participantId": "26001",
+      "fullName": "山田拓也",
       "nickname": "たくや",
       "grade": "小4",
       "checkedInAt": "2026-05-15T09:32:15+09:00",
@@ -628,15 +692,33 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 }
 ```
 
+#### `GET /api/sessions?date=YYYY-MM-DD`
+
+指定日のセッション一覧。`date` を省略すると当日（JST）として解決する。レスポンスは
+`GET /api/sessions/today` と同一形（`todaySessionsResponseSchema`）。
+
+#### `GET /api/events`
+
+ダッシュボードの日付ピッカー用に、過去にチェックインがあった開催日を開催日降順で
+直近 50 件返す。
+
+**レスポンス**:
+
+```json
+{ "events": [{ "id": "uuid-...", "date": "2026-05-15" }] }
+```
+
 #### `GET /api/participants`
 
-参加者一覧（全員、ページネーション対応）。
+参加者一覧（ページネーション対応）。
 
 **クエリパラメータ**:
 
-- `page` (default: 1)
-- `limit` (default: 50)
-- `search` (任意・ニックネーム部分一致)
+- `page` — ページ番号（既定 1）
+- `limit` — 1ページ件数（既定 50・最大 200）
+- `search` — 任意。**ID・氏名・ニックネームの部分一致**
+- `grade` — 任意。学年で絞り込み
+- `active` — 任意。`'true'` / `'false'` で有効/無効を絞り込み
 
 **レスポンス**:
 
@@ -645,6 +727,7 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
   "participants": [
     {
       "id": "26001",
+      "fullName": "山田拓也",
       "nickname": "たくや",
       "grade": "小4",
       "activatedAt": "2026-05-15T09:32:15+09:00",
@@ -655,9 +738,13 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 }
 ```
 
-#### `GET /api/mentors` / `POST /api/mentors` / `PATCH /api/mentors/:id`
+#### `GET /api/mentors` / `POST /api/mentors` / `PATCH /api/mentors/:id`（admin）
 
-メンター（運営者）の一覧・追加・編集（admin権限必須）。
+メンター（運営者）の一覧・追加・編集（いずれも admin 権限必須）。
+
+- `GET` → `{ mentors: [{ id, email, name, role, active, createdAt, lastLoginAt }] }`
+- `POST` → body `{ email, name, role }`（`role` 既定 `mentor`）。既存メールは `EMAIL_ALREADY_EXISTS`
+- `PATCH /:id` → body `{ name?, role?, active? }`（1つ以上必須）。存在しない場合は `NOT_FOUND`。email は OAuth 突合キーのため変更不可
 
 **POSTリクエスト**:
 
@@ -665,19 +752,53 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 { "email": "mentor@example.com", "name": "山田太郎", "role": "mentor" }
 ```
 
-#### `GET /api/pre-registrations` / `POST /api/pre-registrations` / `DELETE /api/pre-registrations/:preRegistrationId`
+#### `GET /api/pre-registrations` / `POST /api/pre-registrations` / `DELETE /api/pre-registrations/:preRegistrationId`（admin）
 
-学生側スプシ上の「未アクティベート事前登録者」を管理する admin 専用 API。
+学生側スプシ上の事前登録者を管理する admin 専用 API。
 
-- `GET`: 未アクティベート一覧を返す
-- `POST`: `preRegistrationId` を自動採番して行を追加する
-- `DELETE`: 未アクティベート行のみ削除（アクティベート済みは 409）
+- `GET`: **未アクティベート一覧とアクティベート済み一覧の両方**を返す（下記）
+- `POST`: `preRegistrationId`（`PRE-YYYY-NNNN`）を自動採番して行を追加する
+- `DELETE /:preRegistrationId`: 未アクティベート行のみ削除。アクティベート済みは 409（`ALREADY_ACTIVATED`）
 
-**POSTリクエスト**:
+**GETレスポンス**:
 
 ```json
-{ "nickname": "たくや", "grade": "小4", "registeredAt": "2026-05-05" }
+{
+  "preRegistrations": [
+    {
+      "preRegistrationId": "PRE-2026-0042",
+      "fullName": "山田拓也",
+      "nickname": "たくや",
+      "grade": "小4",
+      "registeredAt": "2026-04-15"
+    }
+  ],
+  "activatedPreRegistrations": [
+    {
+      "preRegistrationId": "PRE-2026-0001",
+      "fullName": "鈴木花子",
+      "nickname": "はな",
+      "grade": "小5",
+      "registeredAt": "2026-04-01",
+      "internalId": "26001",
+      "activatedAt": "2026-04-20T09:10:00+09:00"
+    }
+  ]
+}
 ```
+
+**POSTリクエスト**（`preRegistrationId` はバックエンドが採番するため含めない）:
+
+```json
+{
+  "fullName": "山田拓也",
+  "nickname": "たくや",
+  "grade": "小4",
+  "registeredAt": "2026-05-05"
+}
+```
+
+`fullName` は 1〜80 文字、`nickname` は 1〜40 文字、`grade` は GRADES の enum で検証する。
 
 ### 6.3 認証エンドポイント（Better Auth提供）
 
@@ -691,6 +812,8 @@ QR/バーコードスキャン用統合エンドポイント。スキャン値�
 ---
 
 ## 7. 画面仕様
+
+> 受付端末（apps/checkin・Next.js 16 / React 19 iPad PWA）と管理画面（apps/admin・Next.js 16 / React 19）の画面構成。API 呼び出しは `@tecnova/ui` の `apiFetch` を通し、レスポンスは `packages/shared/src/schemas` でアサートする。
 
 ### 7.1 チェックインiPadアプリ（apps/checkin）
 
@@ -761,16 +884,18 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 #### 7.2.2 ダッシュボード
 
 - ヘッダー: ログインユーザー名、ログアウト
-- カード: 「現在の来場者数」「今日の総チェックイン数」「チェックアウト済」
-- 当日のセッション一覧テーブル（リロードで更新）
-  - ID / ニックネーム / 学年 / チェックイン時刻 / チェックアウト時刻 / 現在状態
+- 日付ピッカー: 過去の開催日（`GET /api/events`）＋今日を切り替えて表示
+- サマリカード: 「現在の来場者数」「今日の総チェックイン数」「チェックアウト済」
+- セッション一覧テーブル
+  - ID / **氏名** / ニックネーム / 学年 / チェックイン時刻 / チェックアウト時刻 / 状態
+  - 行クリックで `ParticipantDetailSheet`（参加者詳細）を開く
 
 #### 7.2.3 参加者一覧
 
-- 検索ボックス（ニックネーム）
-- テーブル: ID / ニックネーム / 学年 / アクティベート日 / 状態
+- 検索ボックス（**ID / 氏名 / ニックネーム**の部分一致）＋ 学年フィルタ ＋ 状態（有効/無効）フィルタ
+- テーブル: ID / **氏名** / ニックネーム / 学年 / ID発行日 / 状態
 - ページネーション
-- MVPでは閲覧のみ。編集はPhase 1.5
+- 閲覧専用（編集は Phase 1.5）
 
 #### 7.2.4 メンター管理（admin権限のみ）
 
@@ -780,13 +905,15 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 
 #### 7.2.5 事前登録管理（admin権限のみ）
 
-- 一覧: 事前登録ID / ニックネーム / 学年 / 事前登録日
-- 追加: ニックネーム・学年・事前登録日を入力（IDは `PRE-YYYY-NNNN` で自動採番）
-- 削除: 未アクティベート行のみ削除
+- 追加フォーム: **氏名（最大80文字）**・ニックネーム（最大40文字）・学年・事前登録日を入力（IDは `PRE-YYYY-NNNN` で自動採番）
+- 未アクティベート一覧: 事前登録ID / 氏名 / ニックネーム / 学年 / 事前登録日 ＋ 削除（確認ダイアログ）
+- 折りたたみ「ID発行済みの利用者」セクション: アクティベート済み一覧（`internalId` / `activatedAt` を表示）
 
 ---
 
 ## 8. セットアップ手順
+
+> 既存のモノレポ（pnpm + Turborepo + Biome）の構成と、運用に必要な外部サービス（Cloudflare D1 / Vercel / Google Cloud）の設定手順をまとめる。クローン後の依存解決は `pnpm install` で完結する。
 
 ### 8.1 必要なアカウント・サービス
 
@@ -795,46 +922,26 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 - Vercelアカウント（フロント2つ用：checkin / admin）
 - Google Cloud Platformアカウント（Sheets API + OAuth用）
 
-### 8.2 初期セットアップ手順
+### 8.2 モノレポ構成と依存の入れ方
 
-```bash
-# 1. モノレポ初期化
-mkdir tecnova-platform && cd tecnova-platform
-git init
-pnpm init
+pnpm workspace（`pnpm-workspace.yaml` で `apps/*` と `packages/*` を束ねる）+ Turborepo + Biome の構成。
+各 app / package の役割は以下の通り：
 
-# 2. workspace 設定
-cat > pnpm-workspace.yaml <<'EOF'
-packages:
-  - 'apps/*'
-  - 'packages/*'
-EOF
+| ワークスペース      | name（package.json） | 役割 / 主な依存                                                          |
+| ------------------- | -------------------- | ----------------------------------------------------------------------- |
+| `apps/api`          | `@tecnova/api`       | Hono on Cloudflare Workers。`hono` / `drizzle-orm` / `better-auth` / `@cloudflare/workers-types`（dev）/ `wrangler`（dev） |
+| `apps/checkin`      | `checkin`            | 受付端末 PWA。Next.js / React / `@zxing/browser`                        |
+| `apps/admin`        | `admin`              | 管理画面。Next.js / React                                               |
+| `packages/db`       | `@tecnova/db`        | Drizzle schema + migrations。`drizzle-orm` / `drizzle-kit`（dev）       |
+| `packages/shared`   | `@tecnova/shared`    | 型・Zodスキーマ・Sheets連携。`zod`                                      |
+| `packages/ui`       | `@tecnova/ui`        | 共通 UI（shadcn/ui）・`apiFetch` 等の API クライアント・JST フォーマッタ・`MeProvider` |
 
-# 3. Turborepo & Biome 導入
-pnpm add -D -w turbo @biomejs/biome
-pnpm biome init
+注意点：
 
-# 4. apps/api 作成（Hono on Cloudflare Workers）
-pnpm create hono@latest apps/api -- --template cloudflare-workers --install --pm pnpm
-
-# 5. apps/checkin 作成（Next.js）
-cd apps && pnpm create next-app@latest checkin --typescript --tailwind --app --no-src-dir --import-alias "@/*"
-pnpm create next-app@latest admin --typescript --tailwind --app --no-src-dir --import-alias "@/*"
-cd ..
-
-# 6. packages/db, shared, ui, auth 作成
-mkdir -p packages/{db,shared,ui,auth}/src
-for pkg in db shared ui auth; do
-  cd packages/$pkg && pnpm init && cd ../..
-done
-
-# 7. 各種依存追加
-pnpm --filter @tecnova/db add drizzle-orm
-pnpm --filter @tecnova/db add -D drizzle-kit
-pnpm --filter @tecnova/api add @cloudflare/workers-types
-pnpm --filter @tecnova/shared add zod
-pnpm --filter @tecnova/auth add better-auth
-```
+- **`packages/auth` は存在しない。** Better Auth の設定は `apps/api/src/lib/auth.ts` の `createAuth(env)` ファクトリに集約している。Workers ではリクエスト毎に instance を生成する必要があり、Env を直接受け取れる API 側に置くのが自然なため
+- フロント 2 つ（checkin / admin）は `@tecnova/` プレフィックスを付けず `checkin` / `admin` という name にしている（`pnpm --filter <name>` で指定する）
+- 新規にパッケージ・アプリを足すときは `create-hono` / `create-next-app` などの CLI を使い、`package.json` や `tsconfig.json` を手書きしない
+- 依存追加は `pnpm --filter <name> add <pkg>` で対象ワークスペースに入れる
 
 ### 8.3 turbo.json 雛形
 
@@ -958,103 +1065,21 @@ export default defineConfig({
 
 ---
 
-## 9. 実装順序
+## 9. 運用上の既知の制約
 
-### W1: 基盤構築週
+> 本番運用で踏みやすい仕様上の制約。進捗・残タスクは [`handoff.md`](./handoff.md) で管理する。
 
-| 日      | タスク                                                                     |
-| ------- | -------------------------------------------------------------------------- |
-| Day 1-2 | モノレポ初期化、各appsの雛形作成、Biome/Turborepo設定、GitHub連携          |
-| Day 3   | Drizzleスキーマ定義、D1作成、ローカルD1（Miniflare）にマイグレーション適用 |
-| Day 4   | Hono on Workers疎通、D1バインディング確認、`/health`エンドポイント         |
-| Day 5   | **Google Sheets API疎通PoC（読み取り＋書き込み）。ここが最大の山場**       |
-| Day 6-7 | 「初めての方」フロー実装（API + チェックインiPad画面）                     |
-
-### W2: 機能実装週
-
-| 日     | タスク                                                           |
-| ------ | ---------------------------------------------------------------- |
-| Day 8  | 通常チェックイン/チェックアウトAPI実装、QRスキャン部分実装       |
-| Day 9  | チェックインiPadアプリ完成、PWA化、iPad実機テスト                |
-| Day 10 | 管理画面ダッシュボード・参加者一覧実装                           |
-| Day 11 | Better Auth組み込み、Google OAuth + 許可リスト、メンター管理画面 |
-| Day 12 | E2Eテスト、エッジケース対応、運用マニュアル作成                  |
-| Day 13 | リハーサル（実際のスプシで疎通）                                 |
-| Day 14 | 本番リリース、待機                                               |
-
-### Phase 1.5（運用開始後・並行実装）
-
-- メンタースマホアプリ
-- 活動ログ機能（`activity_logs` / `activity_categories` / `equipment` テーブル追加）
-- ログCSVエクスポート
-
----
-
-## 10. 動作確認チェックリスト
-
-### 10.1 ローンチ判定基準（最低限のGo判定）
-
-> 進捗メモ（2026-05-13時点）: iPad実機での動作確認は完了。受付プロフィール画面 /
-> 履歴 / 一括チェックアウト / マニュアル入力までフロント実装済み。本番運用
-> リハーサル時にチェックリストを最終確定する。
-
-#### チェックイン基盤
-
-- [ ] iPadのSafariでチェックインアプリにアクセスできる
-- [ ] PWA化されホーム画面に追加できる
-- [ ] iOSアクセスガイドでアプリ固定できる
-- [ ] カメラ起動とQR/バーコード読み取りが動作する
-
-#### 「初めての方」フロー
-
-- [ ] iPadから「初めての方」をタップすると未アクティベート一覧が表示される
-- [ ] スプシに登録された事前登録者が登録日新しい順に並ぶ
-- [ ] カードをタップするとアクティベートされ、内製IDが画面に表示される
-- [ ] 内製DBに participants と sessions レコードが作成される
-- [ ] スプシのF/G/H列が正しく更新される
-- [ ] アクティベート済みの参加者は次回以降一覧に表示されない
-
-#### 通常チェックイン/アウト
-
-- [ ] アクティベート済み参加者のIDをQR/バーコードで読み取れる
-- [ ] 初回スキャンでチェックイン、2回目スキャンでチェックアウトされる
-- [ ] チェックアウト時に滞在時間が表示される
-- [ ] events テーブルにその日のレコードがなければ自動生成される
-
-#### 管理画面
-
-- [ ] Google OAuthでログインできる
-- [ ] 許可リスト外のアカウントは弾かれる
-- [ ] ダッシュボードで当日の来場状況が見える
-- [ ] 参加者一覧でアクティベート済みの全員が見える
-- [ ] adminロールでメンター追加・編集ができる
-
-#### 運用支援
-
-- [ ] Wi-Fi切断時のフォールバック手順が運営側に共有されている
-- [ ] エリアマネージャーが学生側スプシへの転記方法を理解している
-- [ ] 教員陣にスプシのアクティベート状況が見えることが共有されている
-
-### 10.2 既知の制約（運用開始後の注意点）
-
-- 当日朝に追加された事前登録者は反映されない可能性がある（5秒キャッシュ＋スプシ手作業転記の遅延）
+- 当日朝に追加された事前登録者は反映されない可能性がある（読み取りキャッシュ＋スプシ手作業転記の遅延）
 - Wi-Fi切断時はチェックイン業務が一時停止する
 - 同時アクティベートでID採番衝突が起きた場合はエラーになる（現行は手動再試行で回復）
 - 活動ログ記入は引き続き従来通りスプシ手作業（Phase 1.5まで）
-- スプシ書き戻し失敗時はDBもロールバックするため、ユーザーに再試行を求める
-
-### 10.3 2026-05-13時点の残タスク（MVP仕上げ）
-
-- 受付プロフィール画面（`/reception/participants/[id]`）の本番リハーサル
-- 同時アクティベート時の採番衝突リトライ実装（`apps/api/src/lib/checkin.ts` の TODO）
-- 運用手順の確定（Wi-Fi断フォールバック、当日担当オペレーション）
-- 昨年度データのD1反映（匿名化済みデータのみ、participants/events/sessions の整合確認）
+- スプシ書き戻し失敗時はDBもロールバック（saga 補償）するため、ユーザーに再試行を求める
 
 ---
 
-## 11. トラブルシュート
+## 10. トラブルシュート
 
-### 11.1 Better Auth on Workers でハマったら
+### 10.1 Better Auth on Workers でハマったら
 
 **症状**: 33秒ハング、503エラー、`Network connection lost`
 
@@ -1064,7 +1089,7 @@ export default defineConfig({
 - リクエスト毎にBetter Auth instanceを生成する（middleware内で）
 - 詳細は Honoの公式ドキュメント `https://hono.dev/examples/better-auth-on-cloudflare` を参照
 
-### 11.2 Google Sheets APIが動かない
+### 10.2 Google Sheets APIが動かない
 
 **症状**: `googleapis` パッケージのインポートエラー、Workers環境で動かない
 
@@ -1074,7 +1099,7 @@ export default defineConfig({
 - アクセストークンは1時間有効、モジュールスコープでキャッシュして使い回す
 - サービスアカウント鍵を平文 JSON のまま `.dev.vars` に置かない。base64 エンコードして保持し、Worker 側で `atob` → `JSON.parse` でデコードする
 
-### 11.3 D1 関連の落とし穴
+### 10.3 D1 関連の落とし穴
 
 **症状**: `D1_ERROR: no such table: ...`
 
@@ -1095,9 +1120,9 @@ export default defineConfig({
 
 **対応**:
 
-- 同時アクティベートで採番が衝突した。`generateNextParticipantId` から再実行するリトライ（最大3回）を実装する
+- 同時アクティベートで採番が衝突した。現行は自動リトライ未実装のため運用側で手動再試行する（将来的には `generateNextParticipantId` からの最大3回リトライを `apps/api/src/lib/checkin.ts` に実装予定）
 
-### 11.4 iPadのカメラが動かない
+### 10.4 iPadのカメラが動かない
 
 **症状**: カメラAPIが拒否される
 
@@ -1107,7 +1132,7 @@ export default defineConfig({
 - iOS Safariの設定でカメラ許可を確認
 - `getUserMedia` のpermission stateを明示的にチェック
 
-### 11.5 Drizzleマイグレーションが D1 に反映されない
+### 10.5 Drizzleマイグレーションが D1 に反映されない
 
 **症状**: `wrangler d1 migrations apply` 実行後にスキーマが変わらない
 
@@ -1120,9 +1145,9 @@ export default defineConfig({
 
 ---
 
-## 12. このドキュメントの使い方
+## 11. このドキュメントの使い方
 
-- 開発中は本書を見ながら実装する
-- 仕様変更が発生した場合、本書を更新してからコード修正する（ドキュメント先行）
-- Phase 1.5へ移行する際は、本書のスコープ外項目を実装ガイドとして別ドキュメントに展開する
-- 全体構想・設計判断の根拠は [`requirements.md`](./requirements.md) を参照
+- 本書は Phase 1（MVP）の現状の実装仕様リファレンス（spec 本体）として参照する
+- 仕様変更が発生した場合、本書を更新してからコードを修正する（ドキュメント先行）
+- Phase 1.5 へ移行する際は、スコープ外項目を実装ガイドとして本書に追記、または別ドキュメントに展開する
+- 設計判断の根拠は [`requirements.md`](./requirements.md)、システム全体構成・拡張ロードマップは [`architecture.md`](./architecture.md)、進捗・運用手順は [`handoff.md`](./handoff.md) を参照
