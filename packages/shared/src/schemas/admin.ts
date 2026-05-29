@@ -49,6 +49,42 @@ export const eventsListResponseSchema = z.object({
   events: z.array(eventItemSchema),
 });
 
+// `/api/stats/participation`
+// 会場全体の参加回数集計（ターム別・日別）。from/to で期間を絞れる（いずれも JST・含む）。
+// counted 判定は SQL で表現できないため backend が JS 集計する（requirements.md §5.4 / mvp.md §4.4）。
+export const participationSummaryQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required')
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required')
+    .optional(),
+});
+
+const participationTermBreakdownSchema = z.object({
+  morning: z.number().int().nonnegative(),
+  afternoon: z.number().int().nonnegative(),
+  evening: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+
+export const participationSummaryResponseSchema = z.object({
+  range: z.object({
+    from: z.string().nullable(), // 'YYYY-MM-DD' (JST)
+    to: z.string().nullable(),
+  }),
+  totals: participationTermBreakdownSchema.extend({
+    days: z.number().int().nonnegative(), // 集計対象の開催日数
+  }),
+  byDate: z.array(
+    participationTermBreakdownSchema.extend({
+      date: z.string(), // 'YYYY-MM-DD' (JST)
+    }),
+  ),
+});
+
 // `/api/participants`
 // 検索（ID / 氏名 / ニックネーム部分一致）+ 学年 + 有効/無効 のフィルタを受け付ける。
 // active は文字列で受けるが、'true' / 'false' のみ許容する。Zod の coerce は
@@ -179,6 +215,8 @@ export type TodaySessionsResponse = z.infer<typeof todaySessionsResponseSchema>;
 export type SessionsByDateQuery = z.infer<typeof sessionsByDateQuerySchema>;
 export type EventItem = z.infer<typeof eventItemSchema>;
 export type EventsListResponse = z.infer<typeof eventsListResponseSchema>;
+export type ParticipationSummaryQuery = z.infer<typeof participationSummaryQuerySchema>;
+export type ParticipationSummaryResponse = z.infer<typeof participationSummaryResponseSchema>;
 export type ParticipantsListQuery = z.infer<typeof participantsListQuerySchema>;
 export type ParticipantListItem = z.infer<typeof participantListItemSchema>;
 export type ParticipantsListResponse = z.infer<typeof participantsListResponseSchema>;
