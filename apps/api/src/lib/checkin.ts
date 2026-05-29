@@ -3,9 +3,10 @@ import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
 import type { ParticipantSearchItem, TodaySessionsResponse } from '@tecnova/shared/schemas';
 import {
-  classifyTerm,
-  countsTowardParticipation,
+  classifyVisit,
+  participationKey,
   type TermId,
+  toJstDateString,
 } from '@tecnova/shared/venue-schedule';
 import { and, asc, desc, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
@@ -82,13 +83,7 @@ const generateNextParticipantId = async (db: Db): Promise<string> => {
   return `${yearPrefix}${String(nextNum).padStart(3, '0')}`;
 };
 
-const todayJST = (): string =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
+const todayJST = (): string => toJstDateString(new Date());
 
 const getOrCreateTodayEvent = async (db: Db): Promise<string> => {
   const today = todayJST();
@@ -378,6 +373,8 @@ export interface ParticipantProfile {
   stats: {
     visitCount: number;
     participationCount: number;
+    visitDayCount: number;
+    uncountedVisitCount: number;
     lastVisitedAt: Date | null;
     totalStayDurationMinutes: number;
   };
@@ -423,13 +420,23 @@ export const fetchParticipantProfile = async (
     ? await findActiveSessionToday(db, participantId, todayEvent.id)
     : null;
   const now = new Date();
+  // 1 パスで履歴整形と集計を同時に行う。term/counted は classifyVisit で
+  // 一度だけ判定する（旧実装は map と参加回数ループで二重に classify していた）。
+  // - participationKeys: 「同一イベント日 × 同一区分」で重複排除した実参加コマ数
+  // - visitDays: 重複排除した来場開催日数
+  // - uncountedVisitCount: 30分ルール等でカウント対象外になったセッション数
+  const participationKeys = new Set<string>();
+  const visitDays = new Set<string>();
+  let uncountedVisitCount = 0;
   const sessionsHistory = sessionRows.map((session) => {
     const end = session.checkedOutAt ?? (session.id === openToday?.id ? now : null);
     const stayDurationMinutes = end
       ? Math.max(0, Math.floor((end.getTime() - session.checkedInAt.getTime()) / 60_000))
       : null;
-    const term = classifyTerm(session.checkedInAt);
-    const counted = countsTowardParticipation(session.checkedInAt);
+    const { term, counted } = classifyVisit(session.checkedInAt);
+    visitDays.add(session.eventDate);
+    if (!counted) uncountedVisitCount += 1;
+    if (counted && term !== null) participationKeys.add(participationKey(session.eventDate, term));
     return {
       sessionId: session.id,
       checkedInAt: session.checkedInAt,
@@ -445,21 +452,13 @@ export const fetchParticipantProfile = async (
     0,
   );
 
-  // 参加回数は「同一イベント日 × 同一区分」で重複排除した実参加コマ数。
-  // チェックイン時刻が区分内かつ終了30分前までのセッションだけをカウントする。
-  const participationKeys = new Set<string>();
-  for (const session of sessionRows) {
-    const term = classifyTerm(session.checkedInAt);
-    if (countsTowardParticipation(session.checkedInAt) && term !== null) {
-      participationKeys.add(`${session.eventDate}#${term}`);
-    }
-  }
-
   return {
     participant,
     stats: {
       visitCount: sessionRows.length,
       participationCount: participationKeys.size,
+      visitDayCount: visitDays.size,
+      uncountedVisitCount,
       lastVisitedAt: sessionRows[0]?.checkedInAt ?? null,
       totalStayDurationMinutes,
     },
@@ -530,16 +529,22 @@ export const fetchReceptionHistoryToday = async (db: Db): Promise<TodaySessionsR
     .where(and(eq(sessions.eventId, event.id), eq(participants.active, true)))
     .orderBy(desc(sessions.checkedInAt));
 
-  const items = rows.map((r) => ({
-    sessionId: r.sessionId,
-    participantId: r.participantId,
-    fullName: r.fullName,
-    nickname: r.nickname,
-    grade: r.grade,
-    checkedInAt: r.checkedInAt.toISOString(),
-    checkedOutAt: r.checkedOutAt ? r.checkedOutAt.toISOString() : null,
-    isPresent: r.checkedOutAt === null,
-  }));
+  const items = rows.map((r) => {
+    // ターム判定・30分ルールは venue-schedule に集約。フロントへは確定値だけ渡す。
+    const { term, counted } = classifyVisit(r.checkedInAt);
+    return {
+      sessionId: r.sessionId,
+      participantId: r.participantId,
+      fullName: r.fullName,
+      nickname: r.nickname,
+      grade: r.grade,
+      checkedInAt: r.checkedInAt.toISOString(),
+      checkedOutAt: r.checkedOutAt ? r.checkedOutAt.toISOString() : null,
+      isPresent: r.checkedOutAt === null,
+      term,
+      counted,
+    };
+  });
   const currentlyPresent = items.filter((item) => item.isPresent).length;
 
   return {
