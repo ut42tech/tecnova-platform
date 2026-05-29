@@ -25,6 +25,7 @@ import {
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
 import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { formatJstDate } from '@tecnova/ui/lib/format';
+import { cn } from '@tecnova/ui/lib/utils';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 
@@ -152,9 +153,24 @@ function StatsBody({ summary }: { summary: SummaryState }) {
     <>
       <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <SummaryCard label="総参加回数" value={totals.total} Icon={IconChartBar} />
-        <SummaryCard label="朝" value={totals.morning} Icon={IconSunHigh} />
-        <SummaryCard label="昼" value={totals.afternoon} Icon={IconClockHour12} />
-        <SummaryCard label="夕方" value={totals.evening} Icon={IconSunset2} />
+        <SummaryCard
+          label="朝"
+          value={totals.morning}
+          Icon={IconSunHigh}
+          iconClassName="text-sky-600"
+        />
+        <SummaryCard
+          label="昼"
+          value={totals.afternoon}
+          Icon={IconClockHour12}
+          iconClassName="text-amber-600"
+        />
+        <SummaryCard
+          label="夕方"
+          value={totals.evening}
+          Icon={IconSunset2}
+          iconClassName="text-violet-600"
+        />
         <SummaryCard label="開催日数" value={totals.days} Icon={IconCalendarStats} />
       </section>
 
@@ -201,16 +217,18 @@ function SummaryCard({
   label,
   value,
   Icon,
+  iconClassName,
 }: {
   label: string;
   value: number;
   Icon: typeof IconChartBar;
+  iconClassName?: string;
 }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <Icon className="size-5 text-muted-foreground" />
+        <Icon className={cn('size-5 text-muted-foreground', iconClassName)} />
       </CardHeader>
       <CardContent>
         <div className="text-3xl font-bold">{value}</div>
