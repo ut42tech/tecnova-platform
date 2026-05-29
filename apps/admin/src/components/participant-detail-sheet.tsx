@@ -1,7 +1,6 @@
 'use client';
 
 import type { ParticipantProfileResponse } from '@tecnova/shared/schemas';
-import { TERM_LABELS } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import {
@@ -20,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { TermBadge } from '@tecnova/ui/components/term-badge';
 import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
@@ -187,12 +187,11 @@ function DetailBody({ data }: { data: ParticipantProfileResponse }) {
                       <span className="inline-flex flex-wrap items-center gap-1">
                         {fmtHistoryDateTime(s.checkedInAt)}
                         {s.term && (
-                          <Badge
-                            variant={s.counted ? 'secondary' : 'outline'}
+                          <TermBadge
+                            term={s.term}
+                            counted={s.counted}
                             className="px-1 py-0 text-[10px] leading-tight"
-                          >
-                            {TERM_LABELS[s.term]}
-                          </Badge>
+                          />
                         )}
                       </span>
                     </TableCell>

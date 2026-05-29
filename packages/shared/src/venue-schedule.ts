@@ -70,6 +70,19 @@ export const toJstWallClock = (instant: Date): JstWallClock => {
   };
 };
 
+// JST 暦日専用フォーマッタ。en-CA ロケールは 'YYYY-MM-DD' を直接返す。
+const jstDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+// UTC instant を JST の暦日 'YYYY-MM-DD' に整形する（events.date と同形）。
+// 「今日（JST）」が欲しいときは現在時刻を渡す。API・フロント双方の JST 日付判定を一本化する。
+// 日付は en-CA フォーマッタから直接得る（壁時計の hour 正規化と独立させ、日跨ぎでも安全）。
+export const toJstDateString = (instant: Date): string => jstDateFormatter.format(instant);
+
 // 'HH:mm' を 0:00 からの通算分に変換する。区間判定を整数比較に落とすためのヘルパ。
 const toMinutesOfDay = (hhmm: string): number =>
   Number.parseInt(hhmm.slice(0, 2), 10) * 60 + Number.parseInt(hhmm.slice(3, 5), 10);
@@ -103,11 +116,26 @@ export const termEndInstant = (instant: Date, id: TermId): Date => {
   return new Date(Date.UTC(year, month - 1, day, endHour - JST_OFFSET_HOURS, endMinute, 0, 0));
 };
 
+export interface VisitClassification {
+  // 来場時刻が属するターム。営業時間外・昼休みは null。
+  term: TermId | null;
+  // 30分ルールを満たし参加回数に数えるか。term が null のときは必ず false。
+  counted: boolean;
+}
+
+// 来場時刻から「ターム」と「参加回数に数えるか」を一度の走査で判定する。
+// term と counted の両方が要る箇所はこれを使い、classifyTerm の二度呼びを避ける。
+export const classifyVisit = (instant: Date): VisitClassification => {
+  const term = classifyTerm(instant);
+  if (term === null) return { term: null, counted: false };
+  const remainingMs = termEndInstant(instant, term).getTime() - instant.getTime();
+  return { term, counted: remainingMs >= MIN_COUNTING_MINUTES * 60_000 };
+};
+
 // この来場が参加回数に数えられるか。ターム内であり、かつそのタームの終了まで
 // MIN_COUNTING_MINUTES 以上残っているとき true。「残り30分未満」や営業時間外は false。
-export const countsTowardParticipation = (instant: Date): boolean => {
-  const term = classifyTerm(instant);
-  if (!term) return false;
-  const remainingMs = termEndInstant(instant, term).getTime() - instant.getTime();
-  return remainingMs >= MIN_COUNTING_MINUTES * 60_000;
-};
+export const countsTowardParticipation = (instant: Date): boolean => classifyVisit(instant).counted;
+
+// 参加回数の重複排除キー。同一 (開催日, ターム) を 1 参加として数えるための文字列キー。
+// 会場横断集計では参加者を区別するため `${participationKey(date, term)}#${participantId}` を使う。
+export const participationKey = (eventDate: string, term: TermId): string => `${eventDate}#${term}`;

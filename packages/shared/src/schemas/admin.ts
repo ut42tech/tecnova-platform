@@ -10,6 +10,11 @@ export const todaySessionItemSchema = z.object({
   checkedInAt: z.string(), // ISO 8601 (UTC)
   checkedOutAt: z.string().nullable(),
   isPresent: z.boolean(),
+  // ターム区分は backend が checkedInAt（JST 壁時計）から導出する。営業時間外は null。
+  // 重要な区分判定ロジックをフロントに持たせないため、venue-schedule の結果を API で返す。
+  term: z.enum(['morning', 'afternoon', 'evening']).nullable(),
+  // 30分ルールを満たし参加回数に数えられるか（タームの残り30分以上前の来場か）。
+  counted: z.boolean(),
 });
 
 export const todaySessionsResponseSchema = z.object({

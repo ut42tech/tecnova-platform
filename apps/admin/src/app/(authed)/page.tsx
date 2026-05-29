@@ -8,7 +8,7 @@ import {
   IconUserCheck,
 } from '@tabler/icons-react';
 import type { EventsListResponse, TodaySessionsResponse } from '@tecnova/shared/schemas';
-import { classifyTerm, TERM_LABELS } from '@tecnova/shared/venue-schedule';
+import { toJstDateString } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
+import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
@@ -51,10 +52,6 @@ const fmtTime = (iso: string): string =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(iso));
-
-// JST の YYYY-MM-DD を返す（events.date と同形）。
-const todayInJst = (): string =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
 
 export default function DashboardPage() {
   const [sessions, setSessions] = useState<SessionsState>({ kind: 'loading' });
@@ -92,7 +89,7 @@ export default function DashboardPage() {
     void loadSessions(selectedDate);
   }, [selectedDate, loadSessions]);
 
-  const today = todayInJst();
+  const today = toJstDateString(new Date());
   // 「本日」ラベル + イベントとして登録済みの過去日を結合する。
   // 今日の event が events に含まれていてもメニューの重複は避ける。
   const pastEvents = events.filter((e) => e.date !== today);
@@ -218,36 +215,35 @@ function DashboardBody({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((s) => {
-                // セッションは term を持たないので、チェックイン時刻から JST 壁時計で導出する。
-                const term = classifyTerm(new Date(s.checkedInAt));
-                return (
-                  <TableRow
-                    key={s.sessionId}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => onSelectParticipant(s.participantId)}
-                  >
-                    <TableCell className="font-mono">{s.participantId}</TableCell>
-                    <TableCell>{s.fullName}</TableCell>
-                    <TableCell>{s.nickname}</TableCell>
-                    <TableCell>{s.grade}</TableCell>
-                    <TableCell>
-                      {term ? (
-                        <Badge variant="secondary">{TERM_LABELS[term]}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{fmtTime(s.checkedInAt)}</TableCell>
-                    <TableCell>{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant={s.isPresent ? 'default' : 'secondary'}>
-                        {s.isPresent ? '来場中' : '退出済'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
+              rows.map((s) => (
+                <TableRow
+                  key={s.sessionId}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => onSelectParticipant(s.participantId)}
+                >
+                  <TableCell className="font-mono">{s.participantId}</TableCell>
+                  <TableCell>{s.fullName}</TableCell>
+                  <TableCell>{s.nickname}</TableCell>
+                  <TableCell>{s.grade}</TableCell>
+                  <TableCell>
+                    {s.term ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <TermBadge term={s.term} counted={s.counted} />
+                        {!s.counted && <UncountedBadge />}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{fmtTime(s.checkedInAt)}</TableCell>
+                  <TableCell>{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={s.isPresent ? 'default' : 'secondary'}>
+                      {s.isPresent ? '来場中' : '退出済'}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>

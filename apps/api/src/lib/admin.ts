@@ -13,9 +13,10 @@ import type {
   UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
 import {
-  classifyTerm,
-  countsTowardParticipation,
+  classifyVisit,
+  participationKey,
   type TermId,
+  toJstDateString,
 } from '@tecnova/shared/venue-schedule';
 import { and, asc, count, desc, eq, gte, like, lte, or, type SQL } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
@@ -36,8 +37,7 @@ export class MentorError extends Error {
 
 // JST 基準で「今日」の日付文字列 'YYYY-MM-DD' を返す。
 // events.date は JST の開催日として保存しているため、ここも JST で判定する。
-const todayInJst = (): string =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
+const todayInJst = (): string => toJstDateString(new Date());
 
 // 指定日（YYYY-MM-DD, JST）の event とそのセッション一覧を返す。
 // date が null の場合は「今日（JST）」として解決する。
@@ -73,16 +73,22 @@ export const fetchSessionsForEvent = async (
     .where(eq(sessions.eventId, event.id))
     .orderBy(desc(sessions.checkedInAt));
 
-  const items = rows.map((r) => ({
-    sessionId: r.sessionId,
-    participantId: r.participantId,
-    fullName: r.fullName,
-    nickname: r.nickname,
-    grade: r.grade,
-    checkedInAt: r.checkedInAt.toISOString(),
-    checkedOutAt: r.checkedOutAt ? r.checkedOutAt.toISOString() : null,
-    isPresent: r.checkedOutAt === null,
-  }));
+  const items = rows.map((r) => {
+    // ターム判定・30分ルールは venue-schedule に集約。フロントへは確定値だけ渡す。
+    const { term, counted } = classifyVisit(r.checkedInAt);
+    return {
+      sessionId: r.sessionId,
+      participantId: r.participantId,
+      fullName: r.fullName,
+      nickname: r.nickname,
+      grade: r.grade,
+      checkedInAt: r.checkedInAt.toISOString(),
+      checkedOutAt: r.checkedOutAt ? r.checkedOutAt.toISOString() : null,
+      isPresent: r.checkedOutAt === null,
+      term,
+      counted,
+    };
+  });
 
   const currentlyPresent = items.filter((i) => i.isPresent).length;
   return {
@@ -144,23 +150,22 @@ export const fetchParticipationSummary = async (
     .innerJoin(events, eq(sessions.eventId, events.id))
     .where(where);
 
-  // 同一参加者は「日付 + ターム」ごとに1回だけ数える。`date#term#participantId` で重複排除。
-  const countedKeys = new Set<string>();
-  for (const row of rows) {
-    const term = classifyTerm(row.checkedInAt);
-    if (term === null || !countsTowardParticipation(row.checkedInAt)) continue;
-    countedKeys.add(`${row.eventDate}#${term}#${row.participantId}`);
-  }
-
-  // 重複排除済みのキーから日別・全体を集計する。
+  // 同一参加者の「日付 + ターム」は1回だけ数える。dedup キー(`date#term#participantId`)で
+  // 重複を弾きつつ、その場で日別・全体バケットへ加算する（キー文字列を再パースしない）。
+  const seen = new Set<string>();
   const byDateMap = new Map<string, TermBuckets>();
   const totals = emptyBuckets();
-  for (const key of countedKeys) {
-    const [date, term] = key.split('#') as [string, TermId, string];
-    let buckets = byDateMap.get(date);
+  for (const row of rows) {
+    const { term, counted } = classifyVisit(row.checkedInAt);
+    if (term === null || !counted) continue;
+    const dedupKey = `${participationKey(row.eventDate, term)}#${row.participantId}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    let buckets = byDateMap.get(row.eventDate);
     if (!buckets) {
       buckets = emptyBuckets();
-      byDateMap.set(date, buckets);
+      byDateMap.set(row.eventDate, buckets);
     }
     incrementBuckets(buckets, term);
     incrementBuckets(totals, term);

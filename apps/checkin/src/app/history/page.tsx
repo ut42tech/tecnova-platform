@@ -14,7 +14,6 @@ import type {
   TodaySessionItem,
   TodaySessionsResponse,
 } from '@tecnova/shared/schemas';
-import { classifyTerm, TERM_LABELS } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import {
   AlertDialog,
@@ -42,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -448,7 +448,6 @@ export default function HistoryPage() {
                   <TableBody className="text-base">
                     {filteredSessions.map((session) => {
                       const stayDurationMinutes = getSessionStayDurationMinutes(session, nowMs);
-                      const term = classifyTerm(new Date(session.checkedInAt));
                       return (
                         <TableRow key={session.sessionId}>
                           <TableCell>
@@ -492,15 +491,10 @@ export default function HistoryPage() {
                               >
                                 {session.isPresent ? '滞在中' : '退室済み'}
                               </Badge>
-                              {term && (
-                                <Badge
-                                  variant="secondary"
-                                  style={{ height: 'auto' }}
-                                  className="bg-sky-100 px-3 py-1.5 text-sky-700"
-                                >
-                                  {TERM_LABELS[term]}
-                                </Badge>
-                              )}
+                              {session.term ? (
+                                <TermBadge term={session.term} counted={session.counted} />
+                              ) : null}
+                              {!session.counted && <UncountedBadge />}
                             </div>
                           </TableCell>
                           <TableCell className="font-bold">
