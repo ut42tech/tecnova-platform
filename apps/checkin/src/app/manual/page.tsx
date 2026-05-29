@@ -49,7 +49,7 @@ export default function ManualPage() {
             initial={prefersReduced ? false : { opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            transition={prefersReduced ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' }}
           >
             {mode === 'id' ? <IdEntryPanel /> : <NameSearchPanel />}
           </motion.div>
