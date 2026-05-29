@@ -14,6 +14,7 @@ import type {
   TodaySessionItem,
   TodaySessionsResponse,
 } from '@tecnova/shared/schemas';
+import { classifyTerm, TERM_LABELS } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import {
   AlertDialog,
@@ -314,6 +315,7 @@ export default function HistoryPage() {
               <div className="min-w-0">
                 <CardDescription className="text-lg text-foreground">
                   {eventLabel}の受付履歴と参加者の状態を確認できます。
+                  「滞在中全員をチェックアウト」は12:00や各タームの終わりに締めるときに使います。
                 </CardDescription>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
@@ -446,6 +448,7 @@ export default function HistoryPage() {
                   <TableBody className="text-base">
                     {filteredSessions.map((session) => {
                       const stayDurationMinutes = getSessionStayDurationMinutes(session, nowMs);
+                      const term = classifyTerm(new Date(session.checkedInAt));
                       return (
                         <TableRow key={session.sessionId}>
                           <TableCell>
@@ -477,17 +480,28 @@ export default function HistoryPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant="secondary"
-                              style={{ height: 'auto' }}
-                              className={
-                                session.isPresent
-                                  ? 'bg-emerald-100 px-3 py-1.5 text-emerald-700'
-                                  : 'px-3 py-1.5'
-                              }
-                            >
-                              {session.isPresent ? '滞在中' : '退室済み'}
-                            </Badge>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="secondary"
+                                style={{ height: 'auto' }}
+                                className={
+                                  session.isPresent
+                                    ? 'bg-emerald-100 px-3 py-1.5 text-emerald-700'
+                                    : 'px-3 py-1.5'
+                                }
+                              >
+                                {session.isPresent ? '滞在中' : '退室済み'}
+                              </Badge>
+                              {term && (
+                                <Badge
+                                  variant="secondary"
+                                  style={{ height: 'auto' }}
+                                  className="bg-sky-100 px-3 py-1.5 text-sky-700"
+                                >
+                                  {TERM_LABELS[term]}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="font-bold">
                             {formatJapaneseDateTimeWithYear(session.checkedInAt)}

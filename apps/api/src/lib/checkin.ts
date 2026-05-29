@@ -2,6 +2,11 @@ import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
 import { fetchSheetRows, updateSheetRow } from '@tecnova/shared/google-sheets';
 import type { ParticipantSearchItem, TodaySessionsResponse } from '@tecnova/shared/schemas';
+import {
+  classifyTerm,
+  countsTowardParticipation,
+  type TermId,
+} from '@tecnova/shared/venue-schedule';
 import { and, asc, desc, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
@@ -372,6 +377,7 @@ export interface ParticipantProfile {
   participant: ProfileParticipant;
   stats: {
     visitCount: number;
+    participationCount: number;
     lastVisitedAt: Date | null;
     totalStayDurationMinutes: number;
   };
@@ -386,6 +392,8 @@ export interface ParticipantProfile {
     checkedOutAt: Date | null;
     stayDurationMinutes: number | null;
     isPresent: boolean;
+    term: TermId | null;
+    counted: boolean;
   }>;
 }
 
@@ -399,8 +407,10 @@ export const fetchParticipantProfile = async (
       id: sessions.id,
       checkedInAt: sessions.checkedInAt,
       checkedOutAt: sessions.checkedOutAt,
+      eventDate: events.date,
     })
     .from(sessions)
+    .innerJoin(events, eq(sessions.eventId, events.id))
     .where(eq(sessions.participantId, participantId))
     .orderBy(desc(sessions.checkedInAt));
 
@@ -418,12 +428,16 @@ export const fetchParticipantProfile = async (
     const stayDurationMinutes = end
       ? Math.max(0, Math.floor((end.getTime() - session.checkedInAt.getTime()) / 60_000))
       : null;
+    const term = classifyTerm(session.checkedInAt);
+    const counted = countsTowardParticipation(session.checkedInAt);
     return {
       sessionId: session.id,
       checkedInAt: session.checkedInAt,
       checkedOutAt: session.checkedOutAt,
       stayDurationMinutes,
       isPresent: session.id === openToday?.id,
+      term,
+      counted,
     };
   });
   const totalStayDurationMinutes = sessionsHistory.reduce(
@@ -431,10 +445,21 @@ export const fetchParticipantProfile = async (
     0,
   );
 
+  // 参加回数は「同一イベント日 × 同一区分」で重複排除した実参加コマ数。
+  // チェックイン時刻が区分内かつ終了30分前までのセッションだけをカウントする。
+  const participationKeys = new Set<string>();
+  for (const session of sessionRows) {
+    const term = classifyTerm(session.checkedInAt);
+    if (countsTowardParticipation(session.checkedInAt) && term !== null) {
+      participationKeys.add(`${session.eventDate}#${term}`);
+    }
+  }
+
   return {
     participant,
     stats: {
       visitCount: sessionRows.length,
+      participationCount: participationKeys.size,
       lastVisitedAt: sessionRows[0]?.checkedInAt ?? null,
       totalStayDurationMinutes,
     },

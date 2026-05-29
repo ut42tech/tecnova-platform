@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./google-sheets": "./src/google-sheets.ts",
-    "./schemas": "./src/schemas/index.ts"
+    "./schemas": "./src/schemas/index.ts",
+    "./venue-schedule": "./src/venue-schedule.ts"
   },
   "scripts": {
     "type-check": "tsc --noEmit"

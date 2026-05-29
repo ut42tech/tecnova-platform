@@ -107,7 +107,8 @@ export const participantProfileResponseSchema = z.object({
     activatedAt: z.string(), // ISO 8601
   }),
   stats: z.object({
-    visitCount: z.number().int().nonnegative(),
+    visitCount: z.number().int().nonnegative(), // 生のセッション数（後方互換のため維持）
+    participationCount: z.number().int().nonnegative(), // 参加回数（ターム単位・30分ルール適用）
     lastVisitedAt: z.string().nullable(), // ISO 8601
     totalStayDurationMinutes: z.number().int().nonnegative(),
   }),
@@ -122,6 +123,10 @@ export const participantProfileResponseSchema = z.object({
       checkedInAt: z.string(), // ISO 8601
       checkedOutAt: z.string().nullable(), // ISO 8601
       stayDurationMinutes: z.number().int().nonnegative().nullable(),
+      // ターム区分。営業時間外の来場は null。venue-schedule の TermId と同期。
+      term: z.enum(['morning', 'afternoon', 'evening']).nullable(),
+      // 30分ルールを満たし参加回数に数えられるか。
+      counted: z.boolean(),
       isPresent: z.boolean(),
     }),
   ),

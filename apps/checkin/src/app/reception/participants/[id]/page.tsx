@@ -11,6 +11,7 @@ import {
   IconUser,
 } from '@tabler/icons-react';
 import type { ParticipantProfileResponse, ScanResponse } from '@tecnova/shared/schemas';
+import { TERM_LABELS } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
@@ -261,8 +262,8 @@ export default function ReceptionParticipantPage() {
           : 'まだありません',
       },
       {
-        label: '来場回数',
-        value: `${profile.stats.visitCount}回`,
+        label: '参加回数',
+        value: `${profile.stats.participationCount}回`,
       },
       {
         label: '累計滞在時間',
@@ -518,7 +519,20 @@ export default function ReceptionParticipantPage() {
                     {profile.sessions.map((session) => (
                       <TableRow key={session.sessionId}>
                         <TableCell className="font-bold">
-                          {formatJapaneseDateTimeWithYear(session.checkedInAt)}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{formatJapaneseDateTimeWithYear(session.checkedInAt)}</span>
+                            {session.term ? (
+                              <Badge
+                                variant="secondary"
+                                style={{ height: 'auto' }}
+                                className="bg-sky-100 px-3 py-1.5 text-sky-700"
+                              >
+                                {TERM_LABELS[session.term]}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="font-bold">
                           {session.checkedOutAt
@@ -529,17 +543,28 @@ export default function ReceptionParticipantPage() {
                           {formatHistoryDuration(session.stayDurationMinutes, session.isPresent)}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant="secondary"
-                            style={{ height: 'auto' }}
-                            className={
-                              session.isPresent
-                                ? 'bg-emerald-100 px-3 py-1.5 text-emerald-700'
-                                : 'px-3 py-1.5'
-                            }
-                          >
-                            {session.isPresent ? '滞在中' : '退室済み'}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              variant="secondary"
+                              style={{ height: 'auto' }}
+                              className={
+                                session.isPresent
+                                  ? 'bg-emerald-100 px-3 py-1.5 text-emerald-700'
+                                  : 'px-3 py-1.5'
+                              }
+                            >
+                              {session.isPresent ? '滞在中' : '退室済み'}
+                            </Badge>
+                            {!session.counted && (
+                              <Badge
+                                variant="secondary"
+                                style={{ height: 'auto' }}
+                                className="bg-slate-100 px-3 py-1.5 text-muted-foreground"
+                              >
+                                カウント対象外
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
