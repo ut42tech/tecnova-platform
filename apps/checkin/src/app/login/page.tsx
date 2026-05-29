@@ -3,20 +3,19 @@
 import { IconBrandGoogleFilled } from '@tabler/icons-react';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Button } from '@tecnova/ui/components/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@tecnova/ui/components/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@tecnova/ui/components/card';
+import { motion, useReducedMotion } from 'motion/react';
+import Image from 'next/image';
 import { useState } from 'react';
+import { PageShell } from '@/components/page-shell';
+import { Reveal } from '@/components/reveal';
 import { authClient } from '@/lib/auth-client';
+import { tapScale } from '@/lib/motion';
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const prefersReduced = useReducedMotion();
 
   const signIn = async () => {
     setBusy(true);
@@ -39,27 +38,54 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex flex-1 items-center justify-center bg-sky-50 p-8">
-      <Card className="w-full max-w-md border-sky-200 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">うけつけシステム</CardTitle>
-          <CardDescription>許可リストに登録されたメンターのみ利用できます</CardDescription>
-        </CardHeader>
-        {error && (
-          <CardContent>
-            <Alert variant="destructive">
-              <AlertTitle>ログインエラー</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          </CardContent>
-        )}
-        <CardFooter>
-          <Button type="button" size="lg" onClick={signIn} disabled={busy} className="w-full">
-            <IconBrandGoogleFilled data-icon="inline-start" />
-            {busy ? 'リダイレクト中...' : 'Google でログイン'}
-          </Button>
-        </CardFooter>
-      </Card>
-    </main>
+    <PageShell className="items-center justify-center">
+      <Reveal className="w-full max-w-md">
+        <Card className="w-full border-sky-200 shadow-sm">
+          <CardHeader>
+            <div className="flex flex-col items-center gap-4 text-center">
+              <Image
+                src="/logo_tecnova.png"
+                alt="TECNOVA"
+                width={180}
+                height={47}
+                priority
+                className="h-12 w-auto"
+              />
+              <div className="flex flex-col gap-1.5">
+                <CardTitle className="text-3xl">ようこそ</CardTitle>
+                <p className="text-base font-bold text-muted-foreground">
+                  うけつけシステムにサインインしてください
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          {error && (
+            <CardContent>
+              <Alert variant="destructive">
+                <AlertTitle>ログインエラー</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
+          <CardFooter className="flex-col gap-3">
+            <motion.div className="w-full" whileTap={prefersReduced ? undefined : tapScale}>
+              <Button
+                type="button"
+                size="lg"
+                onClick={signIn}
+                disabled={busy}
+                className="h-14 w-full text-lg"
+              >
+                <IconBrandGoogleFilled data-icon="inline-start" />
+                {busy ? 'リダイレクト中...' : 'Google でログイン'}
+              </Button>
+            </motion.div>
+            <p className="text-center text-sm font-bold text-muted-foreground">
+              許可リストに登録されたメンターのみ利用できます
+            </p>
+          </CardFooter>
+        </Card>
+      </Reveal>
+    </PageShell>
   );
 }

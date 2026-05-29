@@ -29,10 +29,15 @@ import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
+import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatedNumber } from '@/components/animated-number';
+import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
+import { Reveal } from '@/components/reveal';
 import { formatJapaneseDate } from '@/lib/format';
+import { listItemTransition } from '@/lib/motion';
 
 type State =
   | { kind: 'loading' }
@@ -73,6 +78,7 @@ function ParticipantDetails({ item }: { item: PreRegisteredParticipant }) {
 }
 
 function RegistrationSteps() {
+  const prefersReduced = useReducedMotion();
   const steps = [
     {
       number: '1',
@@ -93,8 +99,14 @@ function RegistrationSteps() {
 
   return (
     <ol className="grid gap-3 sm:grid-cols-3">
-      {steps.map((step) => (
-        <li key={step.number} className="flex items-center gap-3 rounded-lg border bg-white p-3">
+      {steps.map((step, index) => (
+        <motion.li
+          key={step.number}
+          className="flex items-center gap-3 rounded-lg border bg-white p-3"
+          initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={listItemTransition(index)}
+        >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-lg font-black text-emerald-700 tabular-nums">
             {step.number}
           </span>
@@ -104,13 +116,14 @@ function RegistrationSteps() {
               {step.description}
             </span>
           </span>
-        </li>
+        </motion.li>
       ))}
     </ol>
   );
 }
 
 export default function FirstTimePage() {
+  const prefersReduced = useReducedMotion();
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [query, setQuery] = useState('');
 
@@ -151,7 +164,7 @@ export default function FirstTimePage() {
 
   if (state.kind === 'loading') {
     return (
-      <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+      <PageShell>
         <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
           <Card className="border-sky-200 shadow-sm">
             <CardHeader className="gap-4">
@@ -170,7 +183,7 @@ export default function FirstTimePage() {
             </CardContent>
           </Card>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
@@ -201,158 +214,170 @@ export default function FirstTimePage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+    <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4">
-        <Card className="border-sky-200 shadow-sm">
-          <PanelHeader icon={<IconUserPlus className="size-8" />} title="初回登録" tone="emerald" />
-          <CardContent className="flex flex-col gap-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <CardDescription className="text-lg text-foreground">
-                IDカードをまだ持っていない人を、事前登録の一覧から選んでください。
-              </CardDescription>
-              <Badge
-                variant="secondary"
-                style={{ height: 'auto' }}
-                className="w-fit px-4 py-2 text-base"
-              >
-                未登録 {state.items.length}人
-              </Badge>
-            </div>
+        <Reveal>
+          <Card className="border-sky-200 shadow-sm">
+            <PanelHeader
+              icon={<IconUserPlus className="size-8" />}
+              title="初回登録"
+              tone="emerald"
+            />
+            <CardContent className="flex flex-col gap-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <CardDescription className="text-lg text-foreground">
+                  IDカードをまだ持っていない人を、事前登録の一覧から選んでください。
+                </CardDescription>
+                <Badge
+                  variant="secondary"
+                  style={{ height: 'auto' }}
+                  className="w-fit px-4 py-2 text-base"
+                >
+                  未登録 <AnimatedNumber value={state.items.length} className="mx-1 tabular-nums" />
+                  人
+                </Badge>
+              </div>
 
-            <RegistrationSteps />
+              <RegistrationSteps />
 
-            {state.items.length === 0 ? (
-              <Alert className="border-sky-200 bg-white">
-                <IconAlertCircle className="size-5" aria-hidden="true" />
-                <AlertTitle>今、登録できる人はいません</AlertTitle>
-                <AlertDescription>
-                  名前が見つからないときはスタッフに声をかけてください。
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <>
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                  <div className="relative">
-                    <IconSearch
-                      className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <Input
-                      aria-label="事前登録者検索"
-                      type="search"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="氏名・ニックネーム・学年・登録日で検索"
-                      className="h-14 rounded-lg bg-white pr-5 pl-12 text-lg"
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:flex">
-                    {query ? (
+              {state.items.length === 0 ? (
+                <Alert className="border-sky-200 bg-white">
+                  <IconAlertCircle className="size-5" aria-hidden="true" />
+                  <AlertTitle>今、登録できる人はいません</AlertTitle>
+                  <AlertDescription>
+                    名前が見つからないときはスタッフに声をかけてください。
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                    <div className="relative">
+                      <IconSearch
+                        className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <Input
+                        aria-label="事前登録者検索"
+                        type="search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="氏名・ニックネーム・学年・登録日で検索"
+                        className="h-14 rounded-lg bg-white pr-5 pl-12 text-lg"
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+                      {query ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="lg"
+                          onClick={() => setQuery('')}
+                          className="h-14 text-lg"
+                        >
+                          <IconX className="size-6" data-icon="inline-start" />
+                          検索をクリア
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="outline"
                         size="lg"
-                        onClick={() => setQuery('')}
+                        onClick={() => void loadParticipants()}
                         className="h-14 text-lg"
                       >
-                        <IconX className="size-6" data-icon="inline-start" />
-                        検索をクリア
+                        <IconRefresh className="size-6" data-icon="inline-start" />
+                        更新
                       </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      onClick={() => void loadParticipants()}
-                      className="h-14 text-lg"
-                    >
-                      <IconRefresh className="size-6" data-icon="inline-start" />
-                      更新
-                    </Button>
+                    </div>
                   </div>
-                </div>
 
-                {filteredItems.length === 0 ? (
-                  <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-                    <IconAlertCircle className="size-5" aria-hidden="true" />
-                    <AlertTitle>一致する人がいません</AlertTitle>
-                    <AlertDescription>
-                      検索を消して、一覧からニックネームと学年を確認してください。
-                    </AlertDescription>
-                  </Alert>
-                ) : (
-                  <ul className="grid gap-3 sm:grid-cols-2">
-                    {filteredItems.map((item) => (
-                      <li key={item.preRegistrationId}>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-auto min-h-28 w-full justify-between gap-4 whitespace-normal rounded-lg border-2 bg-white px-5 py-4 text-left hover:bg-emerald-50"
-                            >
-                              <span className="flex min-w-0 flex-col gap-2">
-                                <span className="break-words text-2xl font-black leading-tight">
-                                  {item.nickname}
+                  {filteredItems.length === 0 ? (
+                    <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+                      <IconAlertCircle className="size-5" aria-hidden="true" />
+                      <AlertTitle>一致する人がいません</AlertTitle>
+                      <AlertDescription>
+                        検索を消して、一覧からニックネームと学年を確認してください。
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    <ul className="grid gap-3 sm:grid-cols-2">
+                      {filteredItems.map((item, index) => (
+                        <motion.li
+                          key={item.preRegistrationId}
+                          initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={listItemTransition(index)}
+                        >
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-auto min-h-28 w-full justify-between gap-4 whitespace-normal rounded-lg border-2 bg-white px-5 py-4 text-left hover:bg-emerald-50"
+                              >
+                                <span className="flex min-w-0 flex-col gap-2">
+                                  <span className="break-words text-2xl font-black leading-tight">
+                                    {item.nickname}
+                                  </span>
+                                  <span className="break-words text-base font-bold text-muted-foreground">
+                                    {item.fullName}
+                                  </span>
+                                  <span className="flex items-center gap-2 text-base text-muted-foreground">
+                                    <IconCalendar className="size-5 shrink-0" aria-hidden="true" />
+                                    事前登録 {formatJapaneseDate(item.registeredAt)}
+                                  </span>
                                 </span>
-                                <span className="break-words text-base font-bold text-muted-foreground">
-                                  {item.fullName}
+                                <span className="flex shrink-0 items-center gap-2">
+                                  <Badge
+                                    variant="secondary"
+                                    style={{ height: 'auto' }}
+                                    className="px-4 py-2 text-base"
+                                  >
+                                    {item.grade}
+                                  </Badge>
+                                  <IconArrowRight
+                                    className="size-6 text-muted-foreground"
+                                    aria-hidden="true"
+                                  />
                                 </span>
-                                <span className="flex items-center gap-2 text-base text-muted-foreground">
-                                  <IconCalendar className="size-5 shrink-0" aria-hidden="true" />
-                                  事前登録 {formatJapaneseDate(item.registeredAt)}
-                                </span>
-                              </span>
-                              <span className="flex shrink-0 items-center gap-2">
-                                <Badge
-                                  variant="secondary"
-                                  style={{ height: 'auto' }}
-                                  className="px-4 py-2 text-base"
-                                >
-                                  {item.grade}
-                                </Badge>
-                                <IconArrowRight
-                                  className="size-6 text-muted-foreground"
-                                  aria-hidden="true"
-                                />
-                              </span>
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogMedia className="bg-emerald-100 text-emerald-700">
-                                <IconUserPlus className="size-9" aria-hidden="true" />
-                              </AlertDialogMedia>
-                              <AlertDialogTitle>{item.nickname}さんで進みますか</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                次に参加ガイドラインを確認します。最後に同意するとIDが発行されます。
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <ParticipantDetails item={item} />
-                            <AlertDialogFooter>
-                              <AlertDialogCancel size="lg">キャンセル</AlertDialogCancel>
-                              <Button asChild size="lg">
-                                <Link
-                                  href={`/guideline?preRegistrationId=${encodeURIComponent(
-                                    item.preRegistrationId,
-                                  )}`}
-                                >
-                                  ガイドラインへ
-                                  <IconArrowRight className="size-5" data-icon="inline-end" />
-                                </Link>
                               </Button>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogMedia className="bg-emerald-100 text-emerald-700">
+                                  <IconUserPlus className="size-9" aria-hidden="true" />
+                                </AlertDialogMedia>
+                                <AlertDialogTitle>{item.nickname}さんで進みますか</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  次に参加ガイドラインを確認します。最後に同意するとIDが発行されます。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <ParticipantDetails item={item} />
+                              <AlertDialogFooter>
+                                <AlertDialogCancel size="lg">キャンセル</AlertDialogCancel>
+                                <Button asChild size="lg">
+                                  <Link
+                                    href={`/guideline?preRegistrationId=${encodeURIComponent(
+                                      item.preRegistrationId,
+                                    )}`}
+                                  >
+                                    ガイドラインへ
+                                    <IconArrowRight className="size-5" data-icon="inline-end" />
+                                  </Link>
+                                </Button>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </motion.li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Reveal>
       </div>
-    </main>
+    </PageShell>
   );
 }

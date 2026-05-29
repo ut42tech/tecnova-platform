@@ -3,7 +3,6 @@
 import {
   IconAlertCircle,
   IconArrowRight,
-  IconBug,
   IconChevronRight,
   IconKeyboard,
   IconSearch,
@@ -18,73 +17,45 @@ import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { cn } from '@tecnova/ui/lib/utils';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
+import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
+import { SegmentedControl } from '@/components/segmented-control';
+import { listItemTransition } from '@/lib/motion';
 import { PARTICIPANT_ID_PATTERN, participantProfilePath } from '@/lib/participant-id';
 
 type Mode = 'id' | 'name';
 
 export default function ManualPage() {
   const [mode, setMode] = useState<Mode>('id');
-
+  const prefersReduced = useReducedMotion();
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+    <PageShell>
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4">
-        <ModeToggle mode={mode} onChange={setMode} />
-        {mode === 'id' ? <IdEntryPanel /> : <NameSearchPanel />}
+        <SegmentedControl
+          ariaLabel="入力方法"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'id', label: 'IDで入力', icon: <IconKeyboard className="size-6" /> },
+            { value: 'name', label: '名前で探す', icon: <IconSearch className="size-6" /> },
+          ]}
+        />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={mode}
+            initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {mode === 'id' ? <IdEntryPanel /> : <NameSearchPanel />}
+          </motion.div>
+        </AnimatePresence>
       </div>
-    </main>
-  );
-}
-
-function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {
-  return (
-    <div
-      role="tablist"
-      aria-label="入力方法"
-      className="grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm"
-    >
-      <ToggleButton
-        active={mode === 'id'}
-        onClick={() => onChange('id')}
-        icon={<IconKeyboard className="size-6" data-icon="inline-start" />}
-        label="IDで入力"
-      />
-      <ToggleButton
-        active={mode === 'name'}
-        onClick={() => onChange('name')}
-        icon={<IconSearch className="size-6" data-icon="inline-start" />}
-        label="名前で探す"
-      />
-    </div>
-  );
-}
-
-function ToggleButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <Button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      variant={active ? 'default' : 'ghost'}
-      size="lg"
-      className="h-14 text-lg font-bold"
-      onClick={onClick}
-    >
-      {icon}
-      {label}
-    </Button>
+    </PageShell>
   );
 }
 
@@ -103,7 +74,11 @@ function IdEntryPanel() {
   return (
     <form onSubmit={submitManual} className="w-full">
       <Card className="shadow-sm">
-        <PanelHeader icon={<IconBug className="size-8" />} title="マニュアル入力" tone="slate" />
+        <PanelHeader
+          icon={<IconKeyboard className="size-8" />}
+          title="マニュアル入力"
+          tone="slate"
+        />
         <CardContent className="flex flex-col gap-4">
           <CardDescription className="text-lg text-foreground">
             参加者IDがわかる場合は、5桁の数字を入力してください。
@@ -242,6 +217,7 @@ function SearchResults({
   navigatingId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const prefersReduced = useReducedMotion();
   if (state.kind === 'idle') {
     return (
       <p className="rounded-lg border border-dashed bg-white px-5 py-8 text-center text-base text-muted-foreground">
@@ -286,15 +262,20 @@ function SearchResults({
         {state.results.length}件の候補（タップして開く）
       </p>
       <ul className="flex max-h-[60vh] list-none flex-col gap-2 overflow-y-auto p-0">
-        {state.results.map((participant) => (
-          <li key={participant.id}>
+        {state.results.map((participant, index) => (
+          <motion.li
+            key={participant.id}
+            initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={listItemTransition(index)}
+          >
             <ResultRow
               participant={participant}
               isNavigating={navigatingId === participant.id}
               disabled={navigatingId !== null && navigatingId !== participant.id}
               onSelect={() => onSelect(participant.id)}
             />
-          </li>
+          </motion.li>
         ))}
       </ul>
     </div>
