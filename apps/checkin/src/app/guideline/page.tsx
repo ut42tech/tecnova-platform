@@ -42,12 +42,15 @@ import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { cn } from '@tecnova/ui/lib/utils';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
 import { formatJapaneseDate, formatJapaneseDateTime } from '@/lib/format';
+import { popAnimate, popInitial, popTransition } from '@/lib/motion';
 
 type State =
   | { kind: 'loading' }
@@ -376,7 +379,7 @@ function ParticipantStatusChip({ item }: { item: PreRegisteredParticipant }) {
 
 function LoadingScreen() {
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+    <PageShell>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
         <Card className="border-sky-200 shadow-sm">
           <CardContent className="flex flex-col gap-4 p-6">
@@ -389,7 +392,7 @@ function LoadingScreen() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -449,7 +452,7 @@ function ErrorScreen({
 
 function ActivatingScreen({ item }: { item: PreRegisteredParticipant }) {
   return (
-    <main className="flex flex-1 items-center justify-center bg-sky-50 p-4 sm:p-6">
+    <PageShell className="items-center justify-center">
       <Card className="w-full max-w-xl border-emerald-200 shadow-sm">
         <PanelHeader
           icon={<IconRefresh className="size-8 animate-spin" />}
@@ -463,7 +466,7 @@ function ActivatingScreen({ item }: { item: PreRegisteredParticipant }) {
           </p>
         </CardContent>
       </Card>
-    </main>
+    </PageShell>
   );
 }
 
@@ -474,6 +477,7 @@ function GuidelineSlideView({
   total,
   isLast,
   agreed,
+  direction,
   onAgreeChange,
   onPrev,
   onNext,
@@ -485,6 +489,7 @@ function GuidelineSlideView({
   total: number;
   isLast: boolean;
   agreed: boolean;
+  direction: number;
   onAgreeChange: (checked: boolean) => void;
   onPrev: () => void;
   onNext: () => void;
@@ -492,9 +497,21 @@ function GuidelineSlideView({
 }) {
   const tone = guidelineToneClasses[slide.tone];
   const progress = `${(current / total) * 100}%`;
+  const prefersReduced = useReducedMotion();
+  const offset = 40;
+
+  // 矢印キーでスライドを前後に移動できるようにする（iPad の外付けキーボード運用を想定）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' && !isLast) onNext();
+      if (e.key === 'ArrowLeft' && current > 1) onPrev();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [current, isLast, onNext, onPrev]);
 
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-3 sm:p-4">
+    <PageShell className="p-3 sm:p-4">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
         <Card className="flex flex-1 border-sky-200 py-4 shadow-sm">
           <PanelHeader
@@ -525,42 +542,64 @@ function GuidelineSlideView({
                 </span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200">
-                <div
+                <motion.div
                   className={cn('h-full rounded-full', tone.progress)}
-                  style={{ width: progress }}
+                  initial={false}
+                  animate={{ width: progress }}
+                  transition={prefersReduced ? { duration: 0 } : { duration: 0.4, ease: 'easeOut' }}
                 />
               </div>
             </div>
 
-            <section className="grid min-h-[300px] items-stretch gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-              <div
-                className={cn(
-                  'flex flex-col items-center justify-center gap-4 rounded-lg border p-4 text-center',
-                  tone.panel,
-                )}
-              >
-                <div
-                  aria-hidden="true"
-                  className={cn('flex size-24 items-center justify-center rounded-full', tone.icon)}
+            <div className="relative min-h-[300px]">
+              <AnimatePresence mode="wait" custom={direction}>
+                <motion.section
+                  key={current}
+                  custom={direction}
+                  initial={prefersReduced ? false : { opacity: 0, x: direction * offset }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={prefersReduced ? { opacity: 0 } : { opacity: 0, x: direction * -offset }}
+                  transition={
+                    prefersReduced ? { duration: 0 } : { duration: 0.28, ease: 'easeOut' }
+                  }
+                  className="grid min-h-[300px] items-stretch gap-3 lg:grid-cols-[260px_minmax(0,1fr)]"
                 >
-                  {slide.icon}
-                </div>
-                <p className="text-2xl font-semibold leading-tight">{slide.visual}</p>
-              </div>
+                  <div
+                    className={cn(
+                      'flex flex-col items-center justify-center gap-4 rounded-lg border p-4 text-center',
+                      tone.panel,
+                    )}
+                  >
+                    <motion.div
+                      aria-hidden="true"
+                      className={cn(
+                        'flex size-24 items-center justify-center rounded-full',
+                        tone.icon,
+                      )}
+                      initial={prefersReduced ? false : popInitial}
+                      animate={popAnimate}
+                      transition={popTransition(0)}
+                    >
+                      {slide.icon}
+                    </motion.div>
+                    <p className="text-2xl font-semibold leading-tight">{slide.visual}</p>
+                  </div>
 
-              <div className="flex flex-col justify-center rounded-lg border bg-white p-4 sm:p-5">
-                <p className="text-base font-semibold text-muted-foreground">{slide.group}</p>
-                <h1 className="mt-2 break-words text-3xl font-bold leading-tight sm:text-4xl">
-                  {slide.title}
-                </h1>
-                <p className="mt-4 rounded-lg border bg-slate-50 p-4 text-xl font-semibold leading-relaxed">
-                  {slide.rule}
-                </p>
-                <p className="mt-3 text-lg font-medium leading-relaxed text-foreground">
-                  {slide.explanation}
-                </p>
-              </div>
-            </section>
+                  <div className="flex flex-col justify-center rounded-lg border bg-white p-4 sm:p-5">
+                    <p className="text-base font-semibold text-muted-foreground">{slide.group}</p>
+                    <h1 className="mt-2 break-words text-3xl font-bold leading-tight sm:text-4xl">
+                      {slide.title}
+                    </h1>
+                    <p className="mt-4 rounded-lg border bg-slate-50 p-4 text-xl font-semibold leading-relaxed">
+                      {slide.rule}
+                    </p>
+                    <p className="mt-3 text-lg font-medium leading-relaxed text-foreground">
+                      {slide.explanation}
+                    </p>
+                  </div>
+                </motion.section>
+              </AnimatePresence>
+            </div>
 
             {isLast ? (
               <div className="grid gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
@@ -620,7 +659,7 @@ function GuidelineSlideView({
           </CardContent>
         </Card>
       </div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -630,6 +669,16 @@ function GuidelinePageContent() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [slideIndex, setSlideIndex] = useState(0);
   const [agreed, setAgreed] = useState(false);
+  const [direction, setDirection] = useState(1);
+
+  const goPrev = () => {
+    setDirection(-1);
+    setSlideIndex((index) => Math.max(0, index - 1));
+  };
+  const goNext = () => {
+    setDirection(1);
+    setSlideIndex((index) => Math.min(GUIDELINE_SLIDES.length - 1, index + 1));
+  };
 
   const loadTarget = useCallback(async () => {
     if (!preRegistrationId) {
@@ -719,22 +768,12 @@ function GuidelinePageContent() {
         tone="emerald"
         icon={<IconCircleCheck className="size-8" />}
         rows={[
-          {
-            label: 'ID',
-            value: state.data.participantId,
-            valueClassName: 'tabular-nums',
-          },
+          { label: 'ID', value: state.data.participantId, valueClassName: 'tabular-nums' },
           { label: '氏名', value: state.data.fullName },
           { label: 'ニックネーム', value: state.data.nickname },
           { label: '学年', value: state.data.grade },
-          {
-            label: '初回チェックイン',
-            value: formatJapaneseDateTime(state.data.checkedInAt),
-          },
-          {
-            label: '事前登録日',
-            value: formatJapaneseDate(state.registeredAt),
-          },
+          { label: '初回チェックイン', value: formatJapaneseDateTime(state.data.checkedInAt) },
+          { label: '事前登録日', value: formatJapaneseDate(state.registeredAt) },
         ]}
         note="表示されたIDでカードを作ってください"
         footer={
@@ -763,9 +802,10 @@ function GuidelinePageContent() {
       total={GUIDELINE_SLIDES.length}
       isLast={slideIndex === GUIDELINE_SLIDES.length - 1}
       agreed={agreed}
+      direction={direction}
       onAgreeChange={setAgreed}
-      onPrev={() => setSlideIndex((index) => Math.max(0, index - 1))}
-      onNext={() => setSlideIndex((index) => Math.min(GUIDELINE_SLIDES.length - 1, index + 1))}
+      onPrev={goPrev}
+      onNext={goNext}
       onSubmit={() => void activate()}
     />
   );

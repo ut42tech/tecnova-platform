@@ -38,7 +38,7 @@ import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, ViewTransition } from 'react';
 import { AnimatedNumber } from '@/components/animated-number';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
@@ -350,27 +350,20 @@ export default function ReceptionParticipantPage() {
             { label: '滞在時間', value: formatDuration(data.stayDurationMinutes) },
           ];
     return (
-      <motion.div
-        className="flex flex-1"
-        initial={prefersReduced ? false : { opacity: 0, scale: 0.98 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-      >
-        <ResultSummaryCard
-          title={didCheckIn ? 'チェックイン' : 'チェックアウト'}
-          tone={didCheckIn ? 'emerald' : 'amber'}
-          icon={didCheckIn ? <IconLogin2 className="size-8" /> : <IconLogout2 className="size-8" />}
-          rows={resultRows}
-          footer={
-            <Button asChild size="lg" className="h-16 w-full text-xl">
-              <Link href="/">
-                <IconHome className="size-6" data-icon="inline-start" />
-                ホームに戻る
-              </Link>
-            </Button>
-          }
-        />
-      </motion.div>
+      <ResultSummaryCard
+        title={didCheckIn ? 'チェックイン' : 'チェックアウト'}
+        tone={didCheckIn ? 'emerald' : 'amber'}
+        icon={didCheckIn ? <IconLogin2 className="size-8" /> : <IconLogout2 className="size-8" />}
+        rows={resultRows}
+        footer={
+          <Button asChild size="lg" className="h-16 w-full text-xl">
+            <Link href="/">
+              <IconHome className="size-6" data-icon="inline-start" />
+              ホームに戻る
+            </Link>
+          </Button>
+        }
+      />
     );
   }
 
@@ -380,122 +373,126 @@ export default function ReceptionParticipantPage() {
     <main className="flex flex-1 flex-col bg-gradient-to-b from-sky-50 to-white p-4 sm:p-6">
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <motion.div
-            className="h-full"
-            initial={prefersReduced ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut', delay: 0 }}
-          >
-            <Card className="h-full border-sky-200 shadow-sm">
-              <CardContent className="flex h-full flex-col gap-6 p-6">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-4">
-                    <div className="flex size-20 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
-                      <IconUser className="size-11" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <CardTitle className="break-words text-4xl leading-tight sm:text-5xl">
-                        {profile.participant.nickname}
-                      </CardTitle>
-                      <p className="mt-1 break-words text-lg font-bold text-muted-foreground">
-                        {profile.participant.fullName}
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge
-                          variant="secondary"
-                          style={{ height: 'auto' }}
-                          className="px-4 py-2 text-base tabular-nums"
-                        >
-                          ID {profile.participant.id}
-                        </Badge>
-                        <Badge
-                          variant="secondary"
-                          style={{ height: 'auto' }}
-                          className="px-4 py-2 text-base"
-                        >
-                          {profile.participant.grade}
-                        </Badge>
+          <ViewTransition name="participant-portal">
+            <motion.div
+              className="h-full"
+              initial={prefersReduced ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: 'easeOut', delay: 0 }}
+            >
+              <Card className="h-full border-sky-200 shadow-sm">
+                <CardContent className="flex h-full flex-col gap-6 p-6">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex size-20 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                        <IconUser className="size-11" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="break-words text-4xl leading-tight sm:text-5xl">
+                          {profile.participant.nickname}
+                        </CardTitle>
+                        <p className="mt-1 break-words text-lg font-bold text-muted-foreground">
+                          {profile.participant.fullName}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Badge
+                            variant="secondary"
+                            style={{ height: 'auto' }}
+                            className="px-4 py-2 text-base tabular-nums"
+                          >
+                            ID {profile.participant.id}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            style={{ height: 'auto' }}
+                            className="px-4 py-2 text-base"
+                          >
+                            {profile.participant.grade}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div
-                    className={
-                      profile.current.isPresent
-                        ? 'flex w-fit items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-base font-bold text-emerald-700'
-                        : 'flex w-fit items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-base font-bold text-slate-600'
-                    }
-                  >
-                    {profile.current.isPresent ? (
-                      <motion.span
-                        className="size-2.5 rounded-full bg-emerald-500"
-                        animate={
-                          prefersReduced ? undefined : { scale: [1, 1.35, 1], opacity: [1, 0.5, 1] }
-                        }
-                        transition={
-                          prefersReduced
-                            ? undefined
-                            : { duration: 2, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }
-                        }
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <span className="size-2.5 rounded-full bg-slate-400" aria-hidden="true" />
-                    )}
-                    {profile.current.isPresent ? 'チェックイン中' : '未チェックイン'}
-                  </div>
-                </div>
-
-                <div className="rounded-lg border bg-white p-4">
-                  <p className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground">
-                    <IconLogin2 className="size-4" aria-hidden="true" />
-                    今日の入室
-                  </p>
-                  <p className="mt-2 text-xl font-bold">
-                    {profile.current.checkedInAt
-                      ? formatJapaneseDateTime(profile.current.checkedInAt)
-                      : 'まだありません'}
-                  </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 p-5 shadow-sm sm:col-span-2">
-                    <p className="flex items-center gap-1.5 text-sm font-bold text-emerald-700">
-                      <IconAward className="size-4" aria-hidden="true" />
-                      参加回数
-                    </p>
-                    <p className="mt-1 text-6xl font-bold leading-none text-emerald-900 tabular-nums">
-                      <AnimatedNumber value={profile.stats.participationCount} />
-                      <span className="ml-1 text-2xl text-emerald-700">回</span>
-                    </p>
-                    <dl className="mt-4 grid grid-cols-3 gap-2 border-emerald-200/70 border-t pt-4">
-                      {participationBreakdown.map((item) => (
-                        <div key={item.label} className="rounded-lg bg-white/70 px-3 py-2">
-                          <dt className="flex items-center gap-1 text-xs font-bold text-muted-foreground">
-                            <item.Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                            <span className="truncate">{item.label}</span>
-                          </dt>
-                          <dd className="mt-1 break-words text-lg font-bold leading-tight tabular-nums">
-                            {item.value}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                  {stats.map((item) => (
-                    <div key={item.label} className="rounded-lg border bg-white p-4">
-                      <p className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground">
-                        <item.Icon className="size-4 shrink-0" aria-hidden="true" />
-                        {item.label}
-                      </p>
-                      <p className="mt-2 break-words text-2xl font-bold leading-tight">
-                        {item.value}
-                      </p>
+                    <div
+                      className={
+                        profile.current.isPresent
+                          ? 'flex w-fit items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-base font-bold text-emerald-700'
+                          : 'flex w-fit items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-base font-bold text-slate-600'
+                      }
+                    >
+                      {profile.current.isPresent ? (
+                        <motion.span
+                          className="size-2.5 rounded-full bg-emerald-500"
+                          animate={
+                            prefersReduced
+                              ? undefined
+                              : { scale: [1, 1.35, 1], opacity: [1, 0.5, 1] }
+                          }
+                          transition={
+                            prefersReduced
+                              ? undefined
+                              : { duration: 2, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }
+                          }
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <span className="size-2.5 rounded-full bg-slate-400" aria-hidden="true" />
+                      )}
+                      {profile.current.isPresent ? 'チェックイン中' : '未チェックイン'}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                  </div>
+
+                  <div className="rounded-lg border bg-white p-4">
+                    <p className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground">
+                      <IconLogin2 className="size-4" aria-hidden="true" />
+                      今日の入室
+                    </p>
+                    <p className="mt-2 text-xl font-bold">
+                      {profile.current.checkedInAt
+                        ? formatJapaneseDateTime(profile.current.checkedInAt)
+                        : 'まだありません'}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 p-5 shadow-sm sm:col-span-2">
+                      <p className="flex items-center gap-1.5 text-sm font-bold text-emerald-700">
+                        <IconAward className="size-4" aria-hidden="true" />
+                        参加回数
+                      </p>
+                      <p className="mt-1 text-6xl font-bold leading-none text-emerald-900 tabular-nums">
+                        <AnimatedNumber value={profile.stats.participationCount} />
+                        <span className="ml-1 text-2xl text-emerald-700">回</span>
+                      </p>
+                      <dl className="mt-4 grid grid-cols-3 gap-2 border-emerald-200/70 border-t pt-4">
+                        {participationBreakdown.map((item) => (
+                          <div key={item.label} className="rounded-lg bg-white/70 px-3 py-2">
+                            <dt className="flex items-center gap-1 text-xs font-bold text-muted-foreground">
+                              <item.Icon className="size-3.5 shrink-0" aria-hidden="true" />
+                              <span className="truncate">{item.label}</span>
+                            </dt>
+                            <dd className="mt-1 break-words text-lg font-bold leading-tight tabular-nums">
+                              {item.value}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                    {stats.map((item) => (
+                      <div key={item.label} className="rounded-lg border bg-white p-4">
+                        <p className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground">
+                          <item.Icon className="size-4 shrink-0" aria-hidden="true" />
+                          {item.label}
+                        </p>
+                        <p className="mt-2 break-words text-2xl font-bold leading-tight">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </ViewTransition>
 
           <div className="flex flex-col gap-4">
             <motion.div

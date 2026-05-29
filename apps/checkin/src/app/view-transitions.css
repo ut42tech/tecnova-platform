@@ -1,0 +1,22 @@
+/* View Transitions（experimental.viewTransition）の調整。
+   ルート間の既定クロスフェードと、スキャン→プロフィールの共有要素モーフの時間を整える。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.28s;
+}
+
+/* スキャン→プロフィールの共有要素モーフ（name="participant-portal"） */
+::view-transition-group(participant-portal) {
+  animation-duration: 0.4s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* アクセシビリティ: モーション低減時はビュー遷移アニメーションを無効化する */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    /* biome-ignore lint/complexity/noImportantStyles: モーション低減時のアクセシビリティ上書き。上の named morph 規則（participant-portal）に確実に勝つため !important が必要。 */
+    animation-duration: 0s !important;
+  }
+}
