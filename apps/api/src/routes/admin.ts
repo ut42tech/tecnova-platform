@@ -1,6 +1,7 @@
 import {
   createMentorRequestSchema,
   participantsListQuerySchema,
+  participationSummaryQuerySchema,
   sessionsByDateQuerySchema,
   updateMentorRequestSchema,
 } from '@tecnova/shared/schemas';
@@ -10,6 +11,7 @@ import {
   fetchEventsList,
   fetchMentorsList,
   fetchParticipantsList,
+  fetchParticipationSummary,
   fetchSessionsForEvent,
   fetchTodaySessions,
   updateMentor,
@@ -46,6 +48,16 @@ adminRoute.get('/sessions', async (c) => {
 
 // 過去開催日のセレクタ用（最新 50 件）。
 adminRoute.get('/events', async (c) => c.json(await fetchEventsList(createDb(c.env))));
+
+// 会場全体の参加回数集計（ターム別・日別）。from/to で期間を絞れる（いずれも JST・含む）。
+// counted 判定は SQL で表現できないため lib 側で JS 集計する。
+adminRoute.get('/stats/participation', async (c) => {
+  const parsed = participationSummaryQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) {
+    return c.json(invalidQueryError, 400);
+  }
+  return c.json(await fetchParticipationSummary(createDb(c.env), parsed.data));
+});
 
 // 利用者一覧。ページネーション + ID / 氏名 / ニックネーム検索 + 学年 / 有効状態フィルタ。
 adminRoute.get('/participants', async (c) => {

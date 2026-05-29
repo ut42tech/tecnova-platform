@@ -7,10 +7,17 @@ import type {
   MentorsListResponse,
   ParticipantsListQuery,
   ParticipantsListResponse,
+  ParticipationSummaryQuery,
+  ParticipationSummaryResponse,
   TodaySessionsResponse,
   UpdateMentorRequest,
 } from '@tecnova/shared/schemas';
-import { and, asc, count, desc, eq, like, or, type SQL } from 'drizzle-orm';
+import {
+  classifyTerm,
+  countsTowardParticipation,
+  type TermId,
+} from '@tecnova/shared/venue-schedule';
+import { and, asc, count, desc, eq, gte, like, lte, or, type SQL } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 
 type Db = DrizzleD1Database<typeof schema>;
@@ -101,6 +108,73 @@ export const fetchEventsList = async (db: Db, limit = 50): Promise<EventsListRes
     .orderBy(desc(events.date))
     .limit(limit);
   return { events: rows };
+};
+
+// 1 ターム分のカウント集計バケット。byDate の各要素と totals の共通形。
+type TermBuckets = { morning: number; afternoon: number; evening: number; total: number };
+
+const emptyBuckets = (): TermBuckets => ({ morning: 0, afternoon: 0, evening: 0, total: 0 });
+
+const incrementBuckets = (buckets: TermBuckets, term: TermId): void => {
+  buckets[term] += 1;
+  buckets.total += 1;
+};
+
+// 会場全体の参加回数集計（ターム別・日別）。from/to は events.date（'YYYY-MM-DD' JST）で絞る。
+// 「カウント対象」の判定（ターム内 かつ ターム終了の30分以上前）は SQL で表現できないため、
+// 候補セッションを取得して JS で集計する（会場のデータ量は小規模 = 最大でも数千行）。
+export const fetchParticipationSummary = async (
+  db: Db,
+  query: ParticipationSummaryQuery,
+): Promise<ParticipationSummaryResponse> => {
+  // events.date は TEXT 'YYYY-MM-DD'。ISO 日付は辞書順比較で日付順と一致するため gte/lte で範囲指定できる。
+  const conditions: SQL[] = [];
+  if (query.from) conditions.push(gte(events.date, query.from));
+  if (query.to) conditions.push(lte(events.date, query.to));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // active フィルタは掛けない（全セッションを数える = 管理画面のセッション一覧と同じ方針）。
+  const rows = await db
+    .select({
+      participantId: sessions.participantId,
+      eventDate: events.date,
+      checkedInAt: sessions.checkedInAt,
+    })
+    .from(sessions)
+    .innerJoin(events, eq(sessions.eventId, events.id))
+    .where(where);
+
+  // 同一参加者は「日付 + ターム」ごとに1回だけ数える。`date#term#participantId` で重複排除。
+  const countedKeys = new Set<string>();
+  for (const row of rows) {
+    const term = classifyTerm(row.checkedInAt);
+    if (term === null || !countsTowardParticipation(row.checkedInAt)) continue;
+    countedKeys.add(`${row.eventDate}#${term}#${row.participantId}`);
+  }
+
+  // 重複排除済みのキーから日別・全体を集計する。
+  const byDateMap = new Map<string, TermBuckets>();
+  const totals = emptyBuckets();
+  for (const key of countedKeys) {
+    const [date, term] = key.split('#') as [string, TermId, string];
+    let buckets = byDateMap.get(date);
+    if (!buckets) {
+      buckets = emptyBuckets();
+      byDateMap.set(date, buckets);
+    }
+    incrementBuckets(buckets, term);
+    incrementBuckets(totals, term);
+  }
+
+  const byDate = [...byDateMap.entries()]
+    .map(([date, buckets]) => ({ date, ...buckets }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  return {
+    range: { from: query.from ?? null, to: query.to ?? null },
+    totals: { ...totals, days: byDate.length },
+    byDate,
+  };
 };
 
 export const fetchParticipantsList = async (
