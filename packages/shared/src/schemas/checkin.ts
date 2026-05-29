@@ -107,8 +107,10 @@ export const participantProfileResponseSchema = z.object({
     activatedAt: z.string(), // ISO 8601
   }),
   stats: z.object({
-    visitCount: z.number().int().nonnegative(), // 生のセッション数（後方互換のため維持）
-    participationCount: z.number().int().nonnegative(), // 参加回数（ターム単位・30分ルール適用）
+    visitCount: z.number().int().nonnegative(), // 総来場回数（生のセッション数）
+    participationCount: z.number().int().nonnegative(), // 参加回数（ターム単位・30分ルール適用・有効）
+    visitDayCount: z.number().int().nonnegative(), // 来場日数（重複排除した開催日数）
+    uncountedVisitCount: z.number().int().nonnegative(), // 無効な来場回数（30分ルール・営業時間外などで参加回数に数えないセッション数）
     lastVisitedAt: z.string().nullable(), // ISO 8601
     totalStayDurationMinutes: z.number().int().nonnegative(),
   }),
