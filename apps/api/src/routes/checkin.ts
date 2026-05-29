@@ -198,6 +198,9 @@ checkinRoute.get('/participants/:participantId', async (c) => {
     },
     stats: {
       visitCount: profile.stats.visitCount,
+      participationCount: profile.stats.participationCount,
+      visitDayCount: profile.stats.visitDayCount,
+      uncountedVisitCount: profile.stats.uncountedVisitCount,
       lastVisitedAt: profile.stats.lastVisitedAt ? profile.stats.lastVisitedAt.toISOString() : null,
       totalStayDurationMinutes: profile.stats.totalStayDurationMinutes,
     },
@@ -212,6 +215,8 @@ checkinRoute.get('/participants/:participantId', async (c) => {
       checkedOutAt: session.checkedOutAt ? session.checkedOutAt.toISOString() : null,
       stayDurationMinutes: session.stayDurationMinutes,
       isPresent: session.isPresent,
+      term: session.term,
+      counted: session.counted,
     })),
   });
 });

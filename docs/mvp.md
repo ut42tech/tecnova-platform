@@ -203,7 +203,7 @@ async function generateNextParticipantId(
 
 - D1 はインタラクティブ・トランザクションを持たないため、PG時代のような「SELECT → INSERT を同一トランザクションで保護」はできない
 - 同時アクティベートはほぼ起こらない（運用上、複数の子が同時タップする確率は低い）
-- **現行実装では採番衝突時の自動リトライは未実装**。`UNIQUE constraint failed: participants.id` が出た場合は再試行（手動）で回復する。将来的には最大3回の自動リトライを実装予定（`apps/api/src/lib/checkin.ts` の TODO）
+- **採番衝突時の自動リトライは実装しない方針で確定**（同時タップはほぼ発生しないため）。`UNIQUE constraint failed: participants.id` が出た場合は手動再試行で回復する運用とする。衝突が実運用で問題化した場合のみ最大3回の自動リトライを検討（`apps/api/src/lib/checkin.ts` の TODO）
 - 年度判定は会計年度ではなく西暦下2桁とする
 
 ### 4.3 events自動生成ロジック
@@ -241,6 +241,27 @@ async function getOrCreateTodayEvent(
 ```
 
 タイムゾーン注意: Workersのデフォルトタイムゾーンはサーバーロケーションに依存しないUTC。JSTで「今日」を判定する必要があるので、上記のように明示的に変換する。SQLite の `onConflictDoNothing` も Drizzle の同名メソッドで動作する（`UNIQUE` 制約に対する `ON CONFLICT DO NOTHING`）。
+
+### 4.4 ターム区分と参加回数（`venue-schedule`）
+
+会場の時間帯（ターム）と「参加回数」のカウントは **`packages/shared/src/venue-schedule.ts`** に集約した純粋ロジックで判定する（API・フロント共通）。DB スキーマは変更せず、`sessions.checked_in_at` から都度導出する（_derive_ 方式）。
+
+| ターム (`TermId`) | ラベル | 時間帯（JST, `[start, end)`） |
+| ----------------- | ------ | ----------------------------- |
+| `morning`         | 朝     | 09:00–12:00                   |
+| `afternoon`       | 昼     | 13:00–16:00                   |
+| `evening`         | 夕方   | 16:00–19:00                   |
+
+主な関数（来場判定はこのモジュールが唯一の出どころ。API もフロントもここを使い、各所で再計算しない）:
+
+- `classifyVisit(instant: Date): { term: TermId | null; counted: boolean }` — **term と counted を一度の走査で確定する主 API**。term/counted の両方が要る箇所（プロフィール集計・当日一覧・会場集計）はこれを使う。
+- `classifyTerm(instant: Date): TermId | null` — 来場時刻が属するターム。どの区間にも入らなければ `null`（昼休み 12–13 時・営業時間外）。
+- `countsTowardParticipation(instant: Date): boolean` — `classifyVisit(instant).counted` の薄いラッパ。ターム内かつ終了まで `MIN_COUNTING_MINUTES`(=30) 以上残っていれば `true`。**「残り30分未満」は `false`**（チェックイン/アウト自体は通常どおり行う）。
+- `participationKey(eventDate, term): string` — 参加回数の重複排除キー（`${eventDate}#${term}`）。会場集計では `#participantId` を足す。
+- `toJstDateString(instant: Date): string` — JST 暦日 'YYYY-MM-DD'（`events.date` と同形）。API・フロントの「今日（JST）」判定を一本化。
+- `TERM_LABELS: Record<TermId, string>` — 表示用ラベル（朝/昼/夕方）。
+
+**参加回数（`participationCount`）の数え方**: `counted` なセッションを `participationKey(開催日, ターム)` 単位で重複排除した件数。朝＋昼に来れば 2、同一タームの事故的な再チェックインは 1 に集約。日本は DST が無く `Asia/Tokyo` は固定 UTC+9 のため、JST 壁時計 ↔ UTC 変換は単純な時差減算で正しく求まる。設計背景は `requirements.md` §5.4。
 
 ---
 
@@ -612,6 +633,9 @@ admin 権限不要・ページネーションなし・active=true のみ・最�
   },
   "stats": {
     "visitCount": 5,
+    "participationCount": 4,
+    "visitDayCount": 3,
+    "uncountedVisitCount": 1,
     "lastVisitedAt": "2026-05-08T14:00:00+09:00",
     "totalStayDurationMinutes": 920
   },
@@ -626,11 +650,16 @@ admin 権限不要・ページネーションなし・active=true のみ・最�
       "checkedInAt": "2026-05-08T13:02:00+09:00",
       "checkedOutAt": "2026-05-08T15:10:00+09:00",
       "stayDurationMinutes": 128,
+      "term": "afternoon",
+      "counted": true,
       "isPresent": false
     }
   ]
 }
 ```
+
+- `participationCount` は §4.4 のルールで数えた参加回数（スキルカードのチェック数に対応・有効）。`visitCount` は総来場回数（生のセッション数）、`visitDayCount` は重複排除した来場日数、`uncountedVisitCount` は 30分ルール・営業時間外などで参加回数に数えない来場数。`participationCount` は同一タームの再来場を集約するため、`visitCount = participationCount + uncountedVisitCount` とは限らない（同一タームに2回来た分は参加回数では1に集約される）。
+- 各セッションの `term`（`morning`/`afternoon`/`evening`、営業時間外は `null`）と `counted`（30分ルールを満たし参加回数に数えられるか）は `checked_in_at` から導出した値。これらは API（`classifyVisit`）が確定し、フロントは再計算しない。
 
 #### `POST /checkin/participants/:participantId/attendance`
 
@@ -681,7 +710,9 @@ admin 権限不要・ページネーションなし・active=true のみ・最�
       "grade": "小4",
       "checkedInAt": "2026-05-15T09:32:15+09:00",
       "checkedOutAt": null,
-      "isPresent": true
+      "isPresent": true,
+      "term": "morning",
+      "counted": true
     }
   ],
   "summary": {
@@ -691,6 +722,8 @@ admin 権限不要・ページネーションなし・active=true のみ・最�
   }
 }
 ```
+
+- 各セッションの `term`（`morning`/`afternoon`/`evening`、営業時間外は `null`）と `counted`（30分ルールを満たし参加回数に数えられるか）は §4.4 の `venue-schedule` で `checked_in_at` から **サーバ側で確定**した値。重要な区分判定ロジックをフロントに置かないため、ダッシュボード／受付りれきはこの値をそのまま表示する（クライアントで `classifyTerm` を再計算しない）。
 
 #### `GET /api/sessions?date=YYYY-MM-DD`
 
@@ -735,6 +768,28 @@ admin 権限不要・ページネーションなし・active=true のみ・最�
     }
   ],
   "pagination": { "page": 1, "limit": 50, "total": 42 }
+}
+```
+
+#### `GET /api/stats/participation`
+
+会場全体の参加回数集計。ターム別・日別の参加回数を返す。任意の期間で絞り込める。`counted` 判定（§4.4）は SQL では表現できないため、対象セッションを取得して JS で集計する（`(開催日, ターム, 参加者)` 単位で重複排除）。
+
+**クエリパラメータ**:
+
+- `from` — 任意。集計開始日（`YYYY-MM-DD`, JST, 含む）
+- `to` — 任意。集計終了日（`YYYY-MM-DD`, JST, 含む）
+
+**レスポンス**:
+
+```json
+{
+  "range": { "from": "2026-05-01", "to": "2026-05-31" },
+  "totals": { "morning": 120, "afternoon": 98, "evening": 45, "total": 263, "days": 12 },
+  "byDate": [
+    { "date": "2026-05-17", "morning": 18, "afternoon": 15, "evening": 0, "total": 33 },
+    { "date": "2026-05-16", "morning": 0, "afternoon": 0, "evening": 12, "total": 12 }
+  ]
 }
 ```
 
@@ -840,7 +895,9 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 - 大きな単一の実行ボタン（`current.nextAction` に応じて「チェックイン」/「チェックアウト」）
   - タップで `POST /checkin/participants/:id/attendance` を呼ぶ
   - レスポンス（`action: 'check_in' | 'check_out'`）に応じて結果サマリを表示
-- 通算来場回数・直近来場日・累計滞在時間と、活動カレンダーのタイル表示（`attendanceIntensityClasses`）
+- 「参加状況」タイルに **参加回数**（`participationCount`・スキルカードのチェック数に対応・主役表示）を大きく出し、内訳として **総来場回数**（`visitCount`）/ **来場日数**（`visitDayCount`）/ **無効な来場回数**（`uncountedVisitCount`）を併記。加えて 登録日 / 最後に来た日 / 累計滞在時間。
+- **来場回数**の活動カレンダータイル表示（1 来場 = 1 タイル）。**カウントされた来場は滞在時間の濃淡で色付け（3 時間で最濃＝`attendanceIntensityClasses`）、カウント対象外の来場は色を付けず × アイコンで埋める**。凡例に濃淡グラデーションと「× 対象外」を併記。
+- セッション履歴の各行に色分けタームバッジ（朝=水色/昼=黄色/夕方=紫の `TermBadge`）と、30分ルールで参加回数に数えない来場の「カウント対象外」表示
 
 #### 7.1.3 初めての方一覧画面 `/first-time`
 
@@ -852,8 +909,8 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 #### 7.1.4 受付履歴画面 `/history`
 
 - `GET /checkin/history/today` で当日のセッション一覧を取得
-- 各行に「現在在場 / 退室済」バッジ、チェックイン時刻、滞在時間を表示
-- 在場中の参加者を選択して「一括チェックアウト」を確認ダイアログ越しに実行（`POST /checkin/history/check-out-bulk`）
+- 各行に「現在在場 / 退室済」バッジ、色分けタームバッジ（朝/昼/夕方・API の `term` を表示）、30分ルールで対象外の来場には「カウント対象外」バッジ、チェックイン時刻、滞在時間を表示
+- 在場中の参加者を選択して「一括チェックアウト」を確認ダイアログ越しに実行（`POST /checkin/history/check-out-bulk`）。タームの終わり（12:00・各回終了時）の締めに使う
 - 行タップで `/reception/participants/[id]` に遷移
 
 #### 7.1.5 マニュアル入力画面 `/manual`
@@ -887,8 +944,8 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 - 日付ピッカー: 過去の開催日（`GET /api/events`）＋今日を切り替えて表示
 - サマリカード: 「現在の来場者数」「今日の総チェックイン数」「チェックアウト済」
 - セッション一覧テーブル
-  - ID / **氏名** / ニックネーム / 学年 / チェックイン時刻 / チェックアウト時刻 / 状態
-  - 行クリックで `ParticipantDetailSheet`（参加者詳細）を開く
+  - ID / **氏名** / ニックネーム / 学年 / ターム（色分けバッジ・API の `term` を表示。30分ルールで対象外なら「カウント対象外」併記）/ チェックイン時刻 / チェックアウト時刻 / 状態
+  - 行クリックで `ParticipantDetailSheet`（参加者詳細）を開く（**参加回数** `participationCount` とセッションごとのターム表記を表示）
 
 #### 7.2.3 参加者一覧
 
@@ -908,6 +965,12 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 - 追加フォーム: **氏名（最大80文字）**・ニックネーム（最大40文字）・学年・事前登録日を入力（IDは `PRE-YYYY-NNNN` で自動採番）
 - 未アクティベート一覧: 事前登録ID / 氏名 / ニックネーム / 学年 / 事前登録日 ＋ 削除（確認ダイアログ）
 - 折りたたみ「ID発行済みの利用者」セクション: アクティベート済み一覧（`internalId` / `activatedAt` を表示）
+
+#### 7.2.6 集計画面 `/stats`
+
+- `GET /api/stats/participation`（任意で `?from=&to=`）で会場全体の参加回数集計を取得
+- 期間フィルタ（from/to）＋ KPI カード（総参加回数／朝・昼・夕方の内訳／開催日数）＋ 日別×ターム別テーブル（開催日降順）
+- ナビ（`app-shell`）に「集計」を追加
 
 ---
 
@@ -1074,6 +1137,8 @@ export default defineConfig({
 - 同時アクティベートでID採番衝突が起きた場合はエラーになる（現行は手動再試行で回復）
 - 活動ログ記入は引き続き従来通りスプシ手作業（Phase 1.5まで）
 - スプシ書き戻し失敗時はDBもロールバック（saga 補償）するため、ユーザーに再試行を求める
+- **ターム境界の締めは手動**: 12:00（午前タームの終わり）と各回終了時に、受付端末「受付りれき」画面の「滞在中全員をチェックアウト」を押して締める運用。Cron 自動化は Phase 1.5 以降（§3.2）
+- **押し忘れ時の午後再スキャン誤動作**: 午前の全員チェックアウトをし忘れたまま、午後も来た子が再スキャンすると、`processScanValue` が開いたままの午前セッションを検知して**チェックアウト**してしまう（午後の参加が記録されない）。もう一度スキャンすればチェックインに復帰する。当面は運用ルール（12:00 で必ず締める）で回避する
 
 ---
 
@@ -1120,7 +1185,7 @@ export default defineConfig({
 
 **対応**:
 
-- 同時アクティベートで採番が衝突した。現行は自動リトライ未実装のため運用側で手動再試行する（将来的には `generateNextParticipantId` からの最大3回リトライを `apps/api/src/lib/checkin.ts` に実装予定）
+- 同時アクティベートで採番が衝突した。手動再試行で回復する運用で確定（同時タップはほぼ発生しないため自動リトライは入れない）。衝突が実運用で頻発した場合のみ `generateNextParticipantId` からの最大3回リトライを `apps/api/src/lib/checkin.ts` で検討
 
 ### 10.4 iPadのカメラが動かない
 

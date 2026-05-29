@@ -228,3 +228,4 @@ temp/
 drizzle/.snapshot.*
 
 .vercel
+.superpowers

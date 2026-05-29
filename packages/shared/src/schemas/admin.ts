@@ -10,6 +10,11 @@ export const todaySessionItemSchema = z.object({
   checkedInAt: z.string(), // ISO 8601 (UTC)
   checkedOutAt: z.string().nullable(),
   isPresent: z.boolean(),
+  // ターム区分は backend が checkedInAt（JST 壁時計）から導出する。営業時間外は null。
+  // 重要な区分判定ロジックをフロントに持たせないため、venue-schedule の結果を API で返す。
+  term: z.enum(['morning', 'afternoon', 'evening']).nullable(),
+  // 30分ルールを満たし参加回数に数えられるか（タームの残り30分以上前の来場か）。
+  counted: z.boolean(),
 });
 
 export const todaySessionsResponseSchema = z.object({
@@ -47,6 +52,42 @@ export const eventItemSchema = z.object({
 });
 export const eventsListResponseSchema = z.object({
   events: z.array(eventItemSchema),
+});
+
+// `/api/stats/participation`
+// 会場全体の参加回数集計（ターム別・日別）。from/to で期間を絞れる（いずれも JST・含む）。
+// counted 判定は SQL で表現できないため backend が JS 集計する（requirements.md §5.4 / mvp.md §4.4）。
+export const participationSummaryQuerySchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required')
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required')
+    .optional(),
+});
+
+const participationTermBreakdownSchema = z.object({
+  morning: z.number().int().nonnegative(),
+  afternoon: z.number().int().nonnegative(),
+  evening: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+
+export const participationSummaryResponseSchema = z.object({
+  range: z.object({
+    from: z.string().nullable(), // 'YYYY-MM-DD' (JST)
+    to: z.string().nullable(),
+  }),
+  totals: participationTermBreakdownSchema.extend({
+    days: z.number().int().nonnegative(), // 集計対象の開催日数
+  }),
+  byDate: z.array(
+    participationTermBreakdownSchema.extend({
+      date: z.string(), // 'YYYY-MM-DD' (JST)
+    }),
+  ),
 });
 
 // `/api/participants`
@@ -179,6 +220,8 @@ export type TodaySessionsResponse = z.infer<typeof todaySessionsResponseSchema>;
 export type SessionsByDateQuery = z.infer<typeof sessionsByDateQuerySchema>;
 export type EventItem = z.infer<typeof eventItemSchema>;
 export type EventsListResponse = z.infer<typeof eventsListResponseSchema>;
+export type ParticipationSummaryQuery = z.infer<typeof participationSummaryQuerySchema>;
+export type ParticipationSummaryResponse = z.infer<typeof participationSummaryResponseSchema>;
 export type ParticipantsListQuery = z.infer<typeof participantsListQuerySchema>;
 export type ParticipantListItem = z.infer<typeof participantListItemSchema>;
 export type ParticipantsListResponse = z.infer<typeof participantsListResponseSchema>;

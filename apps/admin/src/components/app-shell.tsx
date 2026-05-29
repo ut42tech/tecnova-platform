@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  IconChartBar,
   IconChevronDown,
   IconClipboardList,
   IconLayoutDashboard,
@@ -48,6 +49,7 @@ export function AppShell({ children }: Props) {
   const navItems: NavItem[] = [
     { href: '/', label: 'ダッシュボード', Icon: IconLayoutDashboard },
     { href: '/participants', label: '利用者一覧', Icon: IconUsers },
+    { href: '/stats', label: '集計', Icon: IconChartBar },
     ...(me.mentor.role === 'admin'
       ? [
           {

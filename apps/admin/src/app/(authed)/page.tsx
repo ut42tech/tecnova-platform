@@ -8,6 +8,7 @@ import {
   IconUserCheck,
 } from '@tabler/icons-react';
 import type { EventsListResponse, TodaySessionsResponse } from '@tecnova/shared/schemas';
+import { toJstDateString } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
@@ -29,6 +30,7 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
+import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
@@ -50,10 +52,6 @@ const fmtTime = (iso: string): string =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(iso));
-
-// JST の YYYY-MM-DD を返す（events.date と同形）。
-const todayInJst = (): string =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
 
 export default function DashboardPage() {
   const [sessions, setSessions] = useState<SessionsState>({ kind: 'loading' });
@@ -91,7 +89,7 @@ export default function DashboardPage() {
     void loadSessions(selectedDate);
   }, [selectedDate, loadSessions]);
 
-  const today = todayInJst();
+  const today = toJstDateString(new Date());
   // 「本日」ラベル + イベントとして登録済みの過去日を結合する。
   // 今日の event が events に含まれていてもメニューの重複は避ける。
   const pastEvents = events.filter((e) => e.date !== today);
@@ -160,7 +158,7 @@ function DashboardBody({
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </section>
-        <TableSkeleton columns={7} rows={6} />
+        <TableSkeleton columns={8} rows={6} />
       </>
     );
   }
@@ -196,6 +194,7 @@ function DashboardBody({
               <TableHead>氏名</TableHead>
               <TableHead>ニックネーム</TableHead>
               <TableHead>学年</TableHead>
+              <TableHead>ターム</TableHead>
               <TableHead>チェックイン</TableHead>
               <TableHead>チェックアウト</TableHead>
               <TableHead>状態</TableHead>
@@ -204,7 +203,7 @@ function DashboardBody({
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={8}>
                   <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
                     <IconCalendarOff className="size-8" />
                     <span className="text-sm">
@@ -226,6 +225,16 @@ function DashboardBody({
                   <TableCell>{s.fullName}</TableCell>
                   <TableCell>{s.nickname}</TableCell>
                   <TableCell>{s.grade}</TableCell>
+                  <TableCell>
+                    {s.term ? (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <TermBadge term={s.term} counted={s.counted} />
+                        {!s.counted && <UncountedBadge />}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>{fmtTime(s.checkedInAt)}</TableCell>
                   <TableCell>{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</TableCell>
                   <TableCell>

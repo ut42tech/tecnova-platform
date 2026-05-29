@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { TermBadge } from '@tecnova/ui/components/term-badge';
 import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
@@ -143,8 +144,13 @@ function DetailBody({ data }: { data: ParticipantProfileResponse }) {
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">ID発行日</dt>
           <dd>{formatJstDate(participant.activatedAt)}</dd>
-          <dt className="text-muted-foreground">累計来場</dt>
-          <dd>{stats.visitCount} 回</dd>
+          <dt className="text-muted-foreground">参加回数</dt>
+          <dd>
+            {stats.participationCount} 回
+            <span className="ml-2 text-xs text-muted-foreground">
+              （累計来場 {stats.visitCount} 回）
+            </span>
+          </dd>
           <dt className="text-muted-foreground">直近の来場</dt>
           <dd>{fmtDateTime(stats.lastVisitedAt)}</dd>
           <dt className="text-muted-foreground">累計滞在</dt>
@@ -178,7 +184,16 @@ function DetailBody({ data }: { data: ParticipantProfileResponse }) {
                 {sessions.map((s) => (
                   <TableRow key={s.sessionId}>
                     <TableCell className="px-1.5 py-2 tabular-nums">
-                      {fmtHistoryDateTime(s.checkedInAt)}
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        {fmtHistoryDateTime(s.checkedInAt)}
+                        {s.term && (
+                          <TermBadge
+                            term={s.term}
+                            counted={s.counted}
+                            className="px-1 py-0 text-[10px] leading-tight"
+                          />
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="px-1.5 py-2 tabular-nums">
                       {fmtHistoryDateTime(s.checkedOutAt)}

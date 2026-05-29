@@ -41,16 +41,24 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
+import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatedNumber } from '@/components/animated-number';
+import { LiveDot } from '@/components/live-dot';
+import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
+import { Reveal } from '@/components/reveal';
+import { StatTile } from '@/components/stat-tile';
 import {
   formatDuration,
   formatJapaneseDate,
   formatJapaneseDateTime,
   formatJapaneseDateTimeWithYear,
 } from '@/lib/format';
+import { listItemTransition } from '@/lib/motion';
 import { participantProfilePath } from '@/lib/participant-id';
 
 const fetchTodayHistory = async (): Promise<TodaySessionsResponse> => {
@@ -82,7 +90,7 @@ const getSessionStayDurationMinutes = (session: TodaySessionItem, nowMs: number)
 
 function LoadingScreen() {
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+    <PageShell>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
         <Card className="border-sky-200 shadow-sm">
           <CardContent className="grid gap-4 p-6">
@@ -96,7 +104,7 @@ function LoadingScreen() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -176,6 +184,7 @@ function CheckoutDialog({
 }
 
 export default function HistoryPage() {
+  const prefersReduced = useReducedMotion();
   const [data, setData] = useState<TodaySessionsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -301,220 +310,255 @@ export default function HistoryPage() {
   const eventLabel = data?.event ? formatJapaneseDate(data.event.date) : '今日';
 
   return (
-    <main className="flex flex-1 flex-col bg-sky-50 p-4 sm:p-6">
+    <PageShell>
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
-        <Card className="border-sky-200 shadow-sm">
-          <PanelHeader
-            icon={<IconClipboardCheck className="size-8" />}
-            title="受付りれき"
-            tone="sky"
-          />
-          <CardContent className="flex flex-col gap-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <CardDescription className="text-lg text-foreground">
-                  {eventLabel}の受付履歴と参加者の状態を確認できます。
-                </CardDescription>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  disabled={isSubmitting}
-                  onClick={() => void loadSessions({ showLoading: false })}
-                  className="h-14 text-lg"
-                >
-                  <IconRefresh className="size-6" data-icon="inline-start" />
-                  更新
-                </Button>
-                <CheckoutDialog
-                  buttonLabel="滞在中全員をチェックアウト"
-                  count={presentIds.length}
-                  disabled={presentIds.length === 0 || isSubmitting}
-                  onConfirm={() => void checkoutParticipants(presentIds)}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border bg-white p-4">
-                <p className="text-sm font-bold text-muted-foreground">今日の受付</p>
-                <p className="mt-2 text-4xl font-black tabular-nums">
-                  {summary.totalCheckedIn}
-                  <span className="ml-1 text-2xl">人</span>
-                </p>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-sm font-bold text-emerald-700">滞在中</p>
-                <p className="mt-2 text-4xl font-black text-emerald-700 tabular-nums">
-                  {summary.currentlyPresent}
-                  <span className="ml-1 text-2xl">人</span>
-                </p>
-              </div>
-              <div className="rounded-lg border bg-white p-4">
-                <p className="text-sm font-bold text-muted-foreground">退室済み</p>
-                <p className="mt-2 text-4xl font-black tabular-nums">
-                  {summary.checkedOut}
-                  <span className="ml-1 text-2xl">人</span>
-                </p>
-              </div>
-            </div>
-
-            {lastResult && (
-              <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
-                <IconLogout2 className="size-5" aria-hidden="true" />
-                <AlertTitle>チェックアウトしました</AlertTitle>
-                <AlertDescription>
-                  {lastResult.checkedOutCount}人を
-                  {formatJapaneseDateTime(lastResult.checkedOutAt)}にチェックアウトしました。
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {error && (
-              <Alert variant="destructive">
-                <IconAlertCircle className="size-5" aria-hidden="true" />
-                <AlertTitle>処理できませんでした</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-              <Input
-                aria-label="参加者検索"
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="ID・ニックネーム・氏名・学年で検索"
-                className="h-14 rounded-lg bg-white px-5 text-lg"
-              />
-              <div className="grid gap-3 sm:grid-cols-2 lg:flex">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  disabled={filteredPresentIds.length === 0 || isSubmitting}
-                  onClick={() => toggleFilteredPresent(!allFilteredPresentSelected)}
-                  className="h-14 text-lg"
-                >
-                  {allFilteredPresentSelected ? '表示中の選択を解除' : '表示中の滞在者を選択'}
-                </Button>
-                <CheckoutDialog
-                  buttonLabel={`選択中 ${selectedPresentIds.length}人をチェックアウト`}
-                  count={selectedPresentIds.length}
-                  disabled={selectedPresentIds.length === 0 || isSubmitting}
-                  onConfirm={() => void checkoutParticipants(selectedPresentIds)}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardContent className="p-0">
-            {filteredSessions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
-                <div className="flex size-16 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                  <IconUser className="size-9" aria-hidden="true" />
+        <Reveal index={0}>
+          <Card className="border-sky-200 shadow-sm">
+            <PanelHeader
+              icon={<IconClipboardCheck className="size-8" />}
+              title="受付りれき"
+              tone="sky"
+            />
+            <CardContent className="flex flex-col gap-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <CardDescription className="text-lg text-foreground">
+                    {eventLabel}の受付履歴と参加者の状態を確認できます。
+                    「滞在中全員をチェックアウト」は12:00や各タームの終わりに締めるときに使います。
+                  </CardDescription>
                 </div>
-                <p className="text-xl font-bold text-muted-foreground">
-                  表示できる参加者はいません
-                </p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    disabled={isSubmitting}
+                    onClick={() => void loadSessions({ showLoading: false })}
+                    className="h-14 text-lg"
+                  >
+                    <IconRefresh className="size-6" data-icon="inline-start" />
+                    更新
+                  </Button>
+                  <CheckoutDialog
+                    buttonLabel="滞在中全員をチェックアウト"
+                    count={presentIds.length}
+                    disabled={presentIds.length === 0 || isSubmitting}
+                    onConfirm={() => void checkoutParticipants(presentIds)}
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">
-                        <Checkbox
-                          aria-label="表示中の滞在者を選択"
-                          checked={allFilteredPresentSelected}
-                          disabled={filteredPresentIds.length === 0 || isSubmitting}
-                          onCheckedChange={(checked) => toggleFilteredPresent(checked === true)}
-                          className="size-6 rounded-md"
-                        />
-                      </TableHead>
-                      <TableHead className="min-w-48">参加者</TableHead>
-                      <TableHead className="min-w-36">状態</TableHead>
-                      <TableHead className="min-w-44">受付時刻</TableHead>
-                      <TableHead className="min-w-36">滞在時間</TableHead>
-                      <TableHead className="min-w-36">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="text-base">
-                    {filteredSessions.map((session) => {
-                      const stayDurationMinutes = getSessionStayDurationMinutes(session, nowMs);
-                      return (
-                        <TableRow key={session.sessionId}>
-                          <TableCell>
-                            {session.isPresent ? (
-                              <Checkbox
-                                aria-label={`${session.nickname}を選択`}
-                                checked={selectedIdSet.has(session.participantId)}
-                                disabled={isSubmitting}
-                                onCheckedChange={(checked) =>
-                                  toggleParticipant(session.participantId, checked === true)
-                                }
-                                className="size-6 rounded-md"
-                              />
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex min-w-0 flex-col gap-1">
-                              <span className="break-words text-lg font-bold">
-                                {session.nickname}
-                              </span>
-                              <span className="break-words text-sm font-bold text-muted-foreground">
-                                {session.fullName}
-                              </span>
-                              <span className="text-sm font-bold text-muted-foreground">
-                                <span className="tabular-nums">ID {session.participantId}</span>
-                                <span className="mx-2">/</span>
-                                {session.grade}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="secondary"
-                              style={{ height: 'auto' }}
-                              className={
-                                session.isPresent
-                                  ? 'bg-emerald-100 px-3 py-1.5 text-emerald-700'
-                                  : 'px-3 py-1.5'
-                              }
-                            >
-                              {session.isPresent ? '滞在中' : '退室済み'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-bold">
-                            {formatJapaneseDateTimeWithYear(session.checkedInAt)}
-                          </TableCell>
-                          <TableCell className="font-bold">
-                            {session.isPresent
-                              ? `${formatDuration(stayDurationMinutes)} 経過`
-                              : formatDuration(stayDurationMinutes)}
-                          </TableCell>
-                          <TableCell>
-                            <Button asChild variant="outline" size="lg" className="h-12 text-base">
-                              <Link href={participantProfilePath(session.participantId)}>
-                                <IconArrowBack className="size-5" data-icon="inline-start" />
-                                ステータス
-                              </Link>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <StatTile
+                  label="今日の受付"
+                  value={
+                    <>
+                      <AnimatedNumber value={summary.totalCheckedIn} />
+                      <span className="ml-1 text-2xl">人</span>
+                    </>
+                  }
+                />
+                <StatTile
+                  tone="emerald"
+                  label={
+                    <span className="flex items-center gap-2">
+                      <LiveDot active={summary.currentlyPresent > 0} />
+                      滞在中
+                    </span>
+                  }
+                  value={
+                    <>
+                      <AnimatedNumber value={summary.currentlyPresent} />
+                      <span className="ml-1 text-2xl">人</span>
+                    </>
+                  }
+                />
+                <StatTile
+                  label="退室済み"
+                  value={
+                    <>
+                      <AnimatedNumber value={summary.checkedOut} />
+                      <span className="ml-1 text-2xl">人</span>
+                    </>
+                  }
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
+
+              {lastResult && (
+                <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+                  <IconLogout2 className="size-5" aria-hidden="true" />
+                  <AlertTitle>チェックアウトしました</AlertTitle>
+                  <AlertDescription>
+                    {lastResult.checkedOutCount}人を
+                    {formatJapaneseDateTime(lastResult.checkedOutAt)}にチェックアウトしました。
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {error && (
+                <Alert variant="destructive">
+                  <IconAlertCircle className="size-5" aria-hidden="true" />
+                  <AlertTitle>処理できませんでした</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <Input
+                  aria-label="参加者検索"
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="ID・ニックネーム・氏名・学年で検索"
+                  className="h-14 rounded-lg bg-white px-5 text-lg"
+                />
+                <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    disabled={filteredPresentIds.length === 0 || isSubmitting}
+                    onClick={() => toggleFilteredPresent(!allFilteredPresentSelected)}
+                    className="h-14 text-lg"
+                  >
+                    {allFilteredPresentSelected ? '表示中の選択を解除' : '表示中の滞在者を選択'}
+                  </Button>
+                  <CheckoutDialog
+                    buttonLabel={`選択中 ${selectedPresentIds.length}人をチェックアウト`}
+                    count={selectedPresentIds.length}
+                    disabled={selectedPresentIds.length === 0 || isSubmitting}
+                    onConfirm={() => void checkoutParticipants(selectedPresentIds)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Reveal>
+
+        <Reveal index={1}>
+          <Card className="shadow-sm">
+            <CardContent className="p-0">
+              {filteredSessions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
+                  <div className="flex size-16 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                    <IconUser className="size-9" aria-hidden="true" />
+                  </div>
+                  <p className="text-xl font-bold text-muted-foreground">
+                    表示できる参加者はいません
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">
+                          <Checkbox
+                            aria-label="表示中の滞在者を選択"
+                            checked={allFilteredPresentSelected}
+                            disabled={filteredPresentIds.length === 0 || isSubmitting}
+                            onCheckedChange={(checked) => toggleFilteredPresent(checked === true)}
+                            className="size-6 rounded-md"
+                          />
+                        </TableHead>
+                        <TableHead className="min-w-48">参加者</TableHead>
+                        <TableHead className="min-w-36">状態</TableHead>
+                        <TableHead className="min-w-44">受付時刻</TableHead>
+                        <TableHead className="min-w-36">滞在時間</TableHead>
+                        <TableHead className="min-w-36">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody className="text-base">
+                      {filteredSessions.map((session, index) => {
+                        const stayDurationMinutes = getSessionStayDurationMinutes(session, nowMs);
+                        return (
+                          <motion.tr
+                            key={session.sessionId}
+                            data-slot="table-row"
+                            className="border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted"
+                            initial={prefersReduced ? false : { opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={listItemTransition(index)}
+                          >
+                            <TableCell>
+                              {session.isPresent ? (
+                                <Checkbox
+                                  aria-label={`${session.nickname}を選択`}
+                                  checked={selectedIdSet.has(session.participantId)}
+                                  disabled={isSubmitting}
+                                  onCheckedChange={(checked) =>
+                                    toggleParticipant(session.participantId, checked === true)
+                                  }
+                                  className="size-6 rounded-md"
+                                />
+                              ) : null}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex min-w-0 flex-col gap-1">
+                                <span className="break-words text-lg font-bold">
+                                  {session.nickname}
+                                </span>
+                                <span className="break-words text-sm font-bold text-muted-foreground">
+                                  {session.fullName}
+                                </span>
+                                <span className="text-sm font-bold text-muted-foreground">
+                                  <span className="tabular-nums">ID {session.participantId}</span>
+                                  <span className="mx-2">/</span>
+                                  {session.grade}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="secondary"
+                                  style={{ height: 'auto' }}
+                                  className={
+                                    session.isPresent
+                                      ? 'bg-emerald-100 px-3 py-1.5 text-emerald-700'
+                                      : 'px-3 py-1.5'
+                                  }
+                                >
+                                  {session.isPresent ? '滞在中' : '退室済み'}
+                                </Badge>
+                                {session.term ? (
+                                  <TermBadge term={session.term} counted={session.counted} />
+                                ) : null}
+                                {!session.counted && <UncountedBadge />}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-bold">
+                              {formatJapaneseDateTimeWithYear(session.checkedInAt)}
+                            </TableCell>
+                            <TableCell className="font-bold">
+                              {session.isPresent
+                                ? `${formatDuration(stayDurationMinutes)} 経過`
+                                : formatDuration(stayDurationMinutes)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="lg"
+                                className="h-12 text-base"
+                              >
+                                <Link href={participantProfilePath(session.participantId)}>
+                                  <IconArrowBack className="size-5" data-icon="inline-start" />
+                                  ステータス
+                                </Link>
+                              </Button>
+                            </TableCell>
+                          </motion.tr>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </Reveal>
       </div>
-    </main>
+    </PageShell>
   );
 }
