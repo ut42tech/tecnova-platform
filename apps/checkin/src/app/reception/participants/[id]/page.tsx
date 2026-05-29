@@ -9,6 +9,7 @@ import {
   IconLogin2,
   IconLogout2,
   IconUser,
+  IconX,
 } from '@tabler/icons-react';
 import type { ParticipantProfileResponse, ScanResponse } from '@tecnova/shared/schemas';
 import { TERM_LABELS } from '@tecnova/shared/venue-schedule';
@@ -25,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@tecnova/ui/components/table';
+import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -82,13 +84,6 @@ const attendanceDateFormatter = new Intl.DateTimeFormat('ja-JP', {
   weekday: 'short',
 });
 
-const attendanceDateKeyFormatter = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
 const attendanceIntensityClasses = [
   'border-slate-200 bg-slate-100',
   'border-emerald-200 bg-emerald-100',
@@ -97,29 +92,22 @@ const attendanceIntensityClasses = [
   'border-emerald-700 bg-emerald-700',
 ] as const;
 
-type AttendanceTile = {
+// 来場回数ヒートマップは「1 来場 = 1 タイル」。色の濃さはその来場単体の滞在時間で決まる。
+type AttendanceTileSlot = {
   key: string;
   label: string;
   stayDurationMinutes: number;
-  firstCheckedInAt: string;
+  checkedInAt: string;
   isPresent: boolean;
-};
-
-type AttendanceTileSlot = AttendanceTile & {
+  termLabel: string | null;
+  counted: boolean;
   intensity: number;
 };
 
-const formatAttendanceDateKey = (value: string): string => {
-  const parts = attendanceDateKeyFormatter.formatToParts(new Date(value));
-  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '00';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '00';
-  return `${year}-${month}-${day}`;
-};
-
+// その来場の滞在時間（分）を 4 段階に量子化する。3 時間（180分）で最濃。
 const getAttendanceIntensity = (minutes: number): number => {
-  if (minutes >= 360) return 4;
-  if (minutes >= 180) return 3;
+  if (minutes >= 180) return 4;
+  if (minutes >= 120) return 3;
   if (minutes >= 60) return 2;
   return 1;
 };
@@ -127,41 +115,22 @@ const getAttendanceIntensity = (minutes: number): number => {
 const buildAttendanceTiles = (
   sessions: ParticipantProfileResponse['sessions'],
 ): AttendanceTileSlot[] => {
-  const visitsByDate = new Map<string, AttendanceTile>();
-
-  for (const session of sessions) {
-    const key = formatAttendanceDateKey(session.checkedInAt);
-    const checkedInAtMs = new Date(session.checkedInAt).getTime();
-    const stayDurationMinutes = session.stayDurationMinutes ?? 0;
-    const existing = visitsByDate.get(key);
-
-    if (!existing) {
-      visitsByDate.set(key, {
-        key,
+  // profile.sessions は新しい順で届くため、タイルは古い順に並べ直す。
+  return [...sessions]
+    .sort((a, b) => new Date(a.checkedInAt).getTime() - new Date(b.checkedInAt).getTime())
+    .map((session) => {
+      const stayDurationMinutes = session.stayDurationMinutes ?? 0;
+      return {
+        key: session.sessionId,
         label: attendanceDateFormatter.format(new Date(session.checkedInAt)),
         stayDurationMinutes,
-        firstCheckedInAt: session.checkedInAt,
+        checkedInAt: session.checkedInAt,
         isPresent: session.isPresent,
-      });
-      continue;
-    }
-
-    const existingCheckedInAtMs = new Date(existing.firstCheckedInAt).getTime();
-    visitsByDate.set(key, {
-      ...existing,
-      stayDurationMinutes: existing.stayDurationMinutes + stayDurationMinutes,
-      firstCheckedInAt:
-        checkedInAtMs < existingCheckedInAtMs ? session.checkedInAt : existing.firstCheckedInAt,
-      isPresent: existing.isPresent || session.isPresent,
+        termLabel: session.term ? TERM_LABELS[session.term] : null,
+        counted: session.counted,
+        intensity: getAttendanceIntensity(stayDurationMinutes),
+      };
     });
-  }
-
-  return Array.from(visitsByDate.values())
-    .sort((a, b) => new Date(a.firstCheckedInAt).getTime() - new Date(b.firstCheckedInAt).getTime())
-    .map((visit) => ({
-      ...visit,
-      intensity: getAttendanceIntensity(visit.stayDurationMinutes),
-    }));
 };
 
 const buildAttendanceTileSlots = (
@@ -262,12 +231,27 @@ export default function ReceptionParticipantPage() {
           : 'まだありません',
       },
       {
-        label: '参加回数',
-        value: `${profile.stats.participationCount}回`,
-      },
-      {
         label: '累計滞在時間',
         value: formatDuration(profile.stats.totalStayDurationMinutes),
+      },
+    ];
+  }, [profile]);
+
+  // 参加状況タイル内に並べる内訳。参加回数（スキルカードの押印数）を主役にする。
+  const participationBreakdown = useMemo(() => {
+    if (!profile) return [];
+    return [
+      {
+        label: '総来場回数',
+        value: `${profile.stats.visitCount}回`,
+      },
+      {
+        label: '来場日数',
+        value: `${profile.stats.visitDayCount}日`,
+      },
+      {
+        label: '無効な来場回数',
+        value: `${profile.stats.uncountedVisitCount}回`,
       },
     ];
   }, [profile]);
@@ -401,6 +385,23 @@ export default function ReceptionParticipantPage() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border bg-white p-4 sm:col-span-2">
+                  <p className="text-sm font-bold text-muted-foreground">参加回数</p>
+                  <p className="mt-1 text-5xl font-bold leading-none tabular-nums">
+                    {profile.stats.participationCount}
+                    <span className="ml-1 text-2xl">回</span>
+                  </p>
+                  <dl className="mt-4 grid grid-cols-3 gap-3 border-t pt-4">
+                    {participationBreakdown.map((item) => (
+                      <div key={item.label}>
+                        <dt className="text-sm font-bold text-muted-foreground">{item.label}</dt>
+                        <dd className="mt-1 break-words text-xl font-bold leading-tight tabular-nums">
+                          {item.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
                 {stats.map((item) => (
                   <div key={item.label} className="rounded-lg border bg-white p-4">
                     <p className="text-sm font-bold text-muted-foreground">{item.label}</p>
@@ -454,40 +455,74 @@ export default function ReceptionParticipantPage() {
             <Card className="h-fit border-sky-200 bg-white shadow-sm">
               <PanelHeader
                 icon={<IconCalendarStats className="size-8" />}
-                title="来場日数"
+                title="来場回数"
                 tone="emerald"
               />
               <CardContent className="space-y-5">
                 <div className="flex items-end justify-between gap-4">
                   <p className="text-6xl font-bold leading-none tabular-nums">
-                    {attendanceTiles.length}
-                    <span className="ml-1 text-3xl">日</span>
+                    {profile.stats.visitCount}
+                    <span className="ml-1 text-3xl">回</span>
                   </p>
-                  <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
-                    <span>短</span>
-                    {[1, 2, 3, 4].map((intensity) => (
-                      <span
-                        key={intensity}
-                        className={`size-4 rounded-[4px] border ${attendanceIntensityClasses[intensity]}`}
-                        aria-hidden="true"
-                      />
-                    ))}
-                    <span>長</span>
+                  <div className="mb-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs font-bold text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span>短</span>
+                      {[1, 2, 3, 4].map((intensity) => (
+                        <span
+                          key={intensity}
+                          className={`size-4 rounded-[4px] border ${attendanceIntensityClasses[intensity]}`}
+                          aria-hidden="true"
+                        />
+                      ))}
+                      <span>長</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <IconX className="size-3.5 text-slate-400" aria-hidden="true" />
+                      <span>対象外</span>
+                    </span>
                   </div>
                 </div>
                 <ul className="grid w-full list-none grid-cols-7 gap-2 p-0">
                   {attendanceTileSlots.map((tile, index) => {
-                    const label = tile
-                      ? `${tile.label} ${formatDuration(tile.stayDurationMinutes)}${
-                          tile.isPresent ? ' 経過' : ''
-                        }`
-                      : '未記録';
+                    // 空きスロット（パディング）はニュートラルな空タイル。
+                    if (!tile) {
+                      return (
+                        <li
+                          // biome-ignore lint/suspicious/noArrayIndexKey: パディングは静的な位置でしか変化しない
+                          key={`empty-${index}`}
+                          className={`aspect-square rounded-md border ${attendanceIntensityClasses[0]}`}
+                          title="未記録"
+                          aria-label="未記録"
+                        />
+                      );
+                    }
+
+                    const baseLabel = `${tile.label}${
+                      tile.termLabel ? ` ${tile.termLabel}` : ''
+                    } ${formatDuration(tile.stayDurationMinutes)}${tile.isPresent ? ' 経過' : ''}`;
+
+                    // カウント対象外の来場は色を付けず、× アイコンで「来たが無効」を示す。
+                    if (!tile.counted) {
+                      const label = `${baseLabel}・カウント対象外`;
+                      return (
+                        <li
+                          key={tile.key}
+                          className="flex aspect-square items-center justify-center rounded-md border border-slate-200 bg-white"
+                          title={label}
+                          aria-label={label}
+                        >
+                          <IconX className="size-3.5 text-slate-400" aria-hidden="true" />
+                        </li>
+                      );
+                    }
+
+                    // カウント対象の来場は滞在時間の濃淡で色付け。
                     return (
                       <li
-                        key={tile?.key ?? `empty-${index}`}
-                        className={`aspect-square rounded-md border ${attendanceIntensityClasses[tile?.intensity ?? 0]}`}
-                        title={label}
-                        aria-label={label}
+                        key={tile.key}
+                        className={`aspect-square rounded-md border ${attendanceIntensityClasses[tile.intensity]}`}
+                        title={baseLabel}
+                        aria-label={baseLabel}
                       />
                     );
                   })}
@@ -522,13 +557,7 @@ export default function ReceptionParticipantPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span>{formatJapaneseDateTimeWithYear(session.checkedInAt)}</span>
                             {session.term ? (
-                              <Badge
-                                variant="secondary"
-                                style={{ height: 'auto' }}
-                                className="bg-sky-100 px-3 py-1.5 text-sky-700"
-                              >
-                                {TERM_LABELS[session.term]}
-                              </Badge>
+                              <TermBadge term={session.term} counted={session.counted} />
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -555,15 +584,7 @@ export default function ReceptionParticipantPage() {
                             >
                               {session.isPresent ? '滞在中' : '退室済み'}
                             </Badge>
-                            {!session.counted && (
-                              <Badge
-                                variant="secondary"
-                                style={{ height: 'auto' }}
-                                className="bg-slate-100 px-3 py-1.5 text-muted-foreground"
-                              >
-                                カウント対象外
-                              </Badge>
-                            )}
+                            {!session.counted && <UncountedBadge />}
                           </div>
                         </TableCell>
                       </TableRow>
