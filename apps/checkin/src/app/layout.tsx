@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { LINE_Seed_JP } from 'next/font/google';
 import '@tecnova/ui/globals.css';
+import './view-transitions.css';
 import { cn } from '@tecnova/ui/lib/utils';
 import { AppShell } from '@/components/app-shell';
 
