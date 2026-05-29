@@ -84,7 +84,9 @@ const formatHistoryDuration = (minutes: number | null, isPresent: boolean): stri
   return isPresent ? `${formatDuration(minutes)} 経過` : formatDuration(minutes);
 };
 
-const MIN_ATTENDANCE_TILE_COUNT = 35;
+// グリッドは 7 列。最低 6 行（42 タイル）ぶんのマスを敷いて草の下限とする。
+// 実際の表示高さはカードを flex で伸ばして横の参加者カードに揃え、あふれた分はタイル内を縦スクロールさせる。
+const MIN_ATTENDANCE_TILE_COUNT = 42;
 
 // ヒートマップの pop-in スタッガーの遅延上限（秒）。来場数が多くても演出が間延びしないよう頭打ちにする。
 const TILE_STAGGER_MAX_DELAY = 0.5;
@@ -144,16 +146,6 @@ const buildAttendanceTiles = (
         intensity: getAttendanceIntensity(stayDurationMinutes),
       };
     });
-};
-
-const buildAttendanceTileSlots = (
-  visits: AttendanceTileSlot[],
-): Array<AttendanceTileSlot | null> => {
-  const tileCount = Math.max(
-    MIN_ATTENDANCE_TILE_COUNT,
-    Math.ceil(Math.max(visits.length, 1) / 7) * 7,
-  );
-  return Array.from({ length: tileCount }, (_, index) => visits[index] ?? null);
 };
 
 function LoadingScreen() {
@@ -281,10 +273,43 @@ export default function ReceptionParticipantPage() {
     return buildAttendanceTiles(profile.sessions);
   }, [profile]);
 
-  const attendanceTileSlots = useMemo(
-    () => buildAttendanceTileSlots(attendanceTiles),
-    [attendanceTiles],
-  );
+  const [fillRows, setFillRows] = useState<number | null>(null);
+
+  // lg 以上ではヒートマップカードを横の参加者カードに合わせて伸ばす。空いた高さに収まる行数を実測して
+  // その行数ぶんだけ草を敷き詰め、収まらない来場はタイル内を縦スクロールさせる。lg 未満は実測せず静的な下限を使う。
+  // React 19 のクリーンアップ付き ref コールバックで、ul の出現／消滅に合わせて監視を着脱する。
+  const measureTileGrid = useCallback((node: HTMLUListElement | null) => {
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    const TILE_GAP = 8; // gap-2 = 0.5rem
+    const measure = () => {
+      if (!mediaQuery.matches) {
+        setFillRows(null);
+        return;
+      }
+      const { clientWidth, clientHeight } = node;
+      if (clientWidth === 0 || clientHeight === 0) return;
+      const tileSize = (clientWidth - TILE_GAP * 6) / 7; // 7 列・正方形タイル
+      const rows = Math.max(1, Math.floor((clientHeight + TILE_GAP) / (tileSize + TILE_GAP)));
+      setFillRows(rows);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    mediaQuery.addEventListener('change', measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      mediaQuery.removeEventListener('change', measure);
+    };
+  }, []);
+
+  // 表示するマス数。実際の来場行数を下限に、lg は実測行数・それ以外は静的な下限行数まで草で埋める。
+  const attendanceTileSlots = useMemo(() => {
+    const visitRows = Math.ceil(Math.max(attendanceTiles.length, 1) / 7);
+    const baseRows = fillRows ?? Math.ceil(MIN_ATTENDANCE_TILE_COUNT / 7);
+    const tileCount = Math.max(visitRows, baseRows) * 7;
+    return Array.from({ length: tileCount }, (_, index) => attendanceTiles[index] ?? null);
+  }, [attendanceTiles, fillRows]);
 
   const submitAttendance = async () => {
     if (!profile) return;
@@ -526,17 +551,18 @@ export default function ReceptionParticipantPage() {
             </motion.div>
 
             <motion.div
+              className="lg:flex-1 lg:min-h-0"
               initial={prefersReduced ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, ease: 'easeOut', delay: 0.12 }}
             >
-              <Card className="h-fit border-sky-200 bg-white shadow-sm">
+              <Card className="border-sky-200 bg-white shadow-sm lg:h-full">
                 <PanelHeader
                   icon={<IconCalendarStats className="size-8" />}
                   title="来場回数"
                   tone="emerald"
                 />
-                <CardContent className="space-y-5">
+                <CardContent className="flex flex-col gap-5 lg:min-h-0 lg:flex-1">
                   <div className="flex items-end justify-between gap-4">
                     <p className="text-6xl font-bold leading-none tabular-nums">
                       <AnimatedNumber value={profile.stats.visitCount} />
@@ -560,7 +586,10 @@ export default function ReceptionParticipantPage() {
                       </span>
                     </div>
                   </div>
-                  <ul className="grid w-full list-none grid-cols-7 gap-2 p-0">
+                  <ul
+                    ref={measureTileGrid}
+                    className="grid w-full list-none grid-cols-7 content-start gap-2 overscroll-contain p-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+                  >
                     {attendanceTileSlots.map((tile, index) => {
                       const tileEntrance = prefersReduced ? undefined : { opacity: 0, scale: 0.6 };
                       const tileTransition = {
