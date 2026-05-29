@@ -8,6 +8,7 @@ import {
   IconUserCheck,
 } from '@tabler/icons-react';
 import type { EventsListResponse, TodaySessionsResponse } from '@tecnova/shared/schemas';
+import { classifyTerm, TERM_LABELS } from '@tecnova/shared/venue-schedule';
 import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
@@ -160,7 +161,7 @@ function DashboardBody({
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </section>
-        <TableSkeleton columns={7} rows={6} />
+        <TableSkeleton columns={8} rows={6} />
       </>
     );
   }
@@ -196,6 +197,7 @@ function DashboardBody({
               <TableHead>氏名</TableHead>
               <TableHead>ニックネーム</TableHead>
               <TableHead>学年</TableHead>
+              <TableHead>ターム</TableHead>
               <TableHead>チェックイン</TableHead>
               <TableHead>チェックアウト</TableHead>
               <TableHead>状態</TableHead>
@@ -204,7 +206,7 @@ function DashboardBody({
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={8}>
                   <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
                     <IconCalendarOff className="size-8" />
                     <span className="text-sm">
@@ -216,25 +218,36 @@ function DashboardBody({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((s) => (
-                <TableRow
-                  key={s.sessionId}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => onSelectParticipant(s.participantId)}
-                >
-                  <TableCell className="font-mono">{s.participantId}</TableCell>
-                  <TableCell>{s.fullName}</TableCell>
-                  <TableCell>{s.nickname}</TableCell>
-                  <TableCell>{s.grade}</TableCell>
-                  <TableCell>{fmtTime(s.checkedInAt)}</TableCell>
-                  <TableCell>{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={s.isPresent ? 'default' : 'secondary'}>
-                      {s.isPresent ? '来場中' : '退出済'}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))
+              rows.map((s) => {
+                // セッションは term を持たないので、チェックイン時刻から JST 壁時計で導出する。
+                const term = classifyTerm(new Date(s.checkedInAt));
+                return (
+                  <TableRow
+                    key={s.sessionId}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => onSelectParticipant(s.participantId)}
+                  >
+                    <TableCell className="font-mono">{s.participantId}</TableCell>
+                    <TableCell>{s.fullName}</TableCell>
+                    <TableCell>{s.nickname}</TableCell>
+                    <TableCell>{s.grade}</TableCell>
+                    <TableCell>
+                      {term ? (
+                        <Badge variant="secondary">{TERM_LABELS[term]}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{fmtTime(s.checkedInAt)}</TableCell>
+                    <TableCell>{s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}</TableCell>
+                    <TableCell>
+                      <Badge variant={s.isPresent ? 'default' : 'secondary'}>
+                        {s.isPresent ? '来場中' : '退出済'}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
