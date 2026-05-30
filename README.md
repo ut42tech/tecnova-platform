@@ -26,7 +26,7 @@
 最初の導入先は **tec-nova Nagasaki**（長崎市と長崎大学による共同事業）。小学 1 年〜高校 3 年の子どもが 3D プリンタ・プログラミング・ロボット・3D モデリングなどに自由来場で取り組むファブリケーション活動です。
 
 - 🎯 **解決する課題** — 紙とスプレッドシートに依存していた受付・名簿照合・二重登録の混乱を、構造的に解消する
-- 🧩 **システム構成** — 1 つの API（Hono on Cloudflare Workers）＋ クライアント（iPad 受付 / 管理 PC）を同一バックエンドから提供する API-first 設計
+- 🧩 **システム構成** — 1 つの API（Hono on Cloudflare Workers）＋ クライアント（iPad 受付 / 管理 PC / 会場サイネージ）を同一バックエンドから提供する API-first 設計
 - 🔐 **プライバシー設計** — 住所・連絡先などの機微情報は内製 DB に持たず運営側の管理下に限定。保持するのは氏名・ニックネーム・学年のみ
 
 ### 受付のしくみ
@@ -59,6 +59,7 @@
 | 🔍 名前検索 & 手入力             | QR が読めない場合のフォールバック                       |
 | 📋 受付履歴 & 一括チェックアウト | 当日の全操作ログとワンタップ一括退場                    |
 | 📂 Drive 自動連携                | アクティベート時に GAS 経由で Drive フォルダ自動生成    |
+| 📺 会場サイネージ                | 大型モニター向け配信風表示。動画再生・チャイム・来場/にぎわい情報を巡回 |
 
 > 今後のロードマップ・フェーズ計画は [`docs/requirements.md`](./docs/requirements.md)（スコープとフェーズ計画）と [`docs/handoff.md`](./docs/handoff.md)（進捗・残タスク）を参照してください。
 
@@ -105,11 +106,13 @@ graph TB
     subgraph Clients["🖥️ クライアント"]
         C1["📱 Checkin<br/><small>iPad PWA</small>"]
         C3["💻 Admin<br/><small>PC ブラウザ</small>"]
+        C4["📺 Signage<br/><small>大型モニター</small>"]
     end
 
     subgraph Hosting["☁️ Vercel"]
         V1["Next.js<br/>:3000"]
         V3["Next.js<br/>:3001"]
+        V4["Next.js<br/>:3002"]
     end
 
     subgraph Edge["⚡ Cloudflare"]
@@ -125,9 +128,11 @@ graph TB
 
     C1 --> V1
     C3 --> V3
+    C4 --> V4
 
     V1 -- "REST (type-safe)" --> API
     V3 -- "REST (type-safe)" --> API
+    V4 -- "REST (type-safe)" --> API
 
     API --> D1
     API --> GS
@@ -177,11 +182,17 @@ tecnova-platform/
 │   │       ├── app/               # App Router pages (/, /login, /first-time, etc.)
 │   │       ├── components/        # QRスキャナ, 受付カード, 履歴テーブル
 │   │       └── lib/               # api-client, auth-client
-│   └── admin/                     # Next.js 16 — 管理画面 (PC)
+│   ├── admin/                     # Next.js 16 — 管理画面 (PC)
+│   │   └── src/
+│   │       ├── app/               # ダッシュボード, 参加者一覧, メンター管理
+│   │       ├── components/        # データテーブル, フォーム
+│   │       └── lib/               # api-client, auth-client
+│   └── signage/                   # Next.js 16 — 会場サイネージ (大型モニター・キオスク)
 │       └── src/
-│           ├── app/               # ダッシュボード, 参加者一覧, メンター管理
-│           ├── components/        # データテーブル, フォーム
-│           └── lib/               # api-client, auth-client
+│           ├── app/               # 配信風サイネージ画面
+│           ├── components/        # 動画ステージ, チャイムレール, インフォティッカー
+│           ├── config/            # フォールバック動画プレイリスト
+│           └── lib/               # api-client, auth-client, now (時刻ソース)
 ├── packages/
 │   ├── db/                        # Drizzle schema + D1 migrations
 │   ├── shared/                    # 共通型・Zod スキーマ・Sheets 連携
@@ -247,7 +258,7 @@ pnpm dev
 ```
 
 > [!TIP]
-> `pnpm dev` は Turborepo 経由で `api` (`:8787`)・`checkin` (`:3000`)・`admin` (`:3001`) を同時起動します。
+> `pnpm dev` は Turborepo 経由で `api` (`:8787`)・`checkin` (`:3000`)・`admin` (`:3001`)・`signage` (`:3002`) を同時起動します。
 
 詳細なセットアップ手順は [`docs/mvp.md`](./docs/mvp.md#8-セットアップ手順) を参照してください。
 
@@ -276,7 +287,7 @@ graph LR
     end
 
     subgraph Vercel["▲ Vercel"]
-        VA["auto deploy<br/>checkin + admin"]
+        VA["auto deploy<br/>checkin + admin + signage"]
     end
 
     PR --> CI
@@ -295,6 +306,7 @@ graph LR
 | `apps/api`     | Cloudflare Workers | GitHub Actions — `main` push (paths filter) |
 | `apps/checkin` | Vercel             | GitHub 連携 — 自動デプロイ                  |
 | `apps/admin`   | Vercel             | GitHub 連携 — 自動デプロイ                  |
+| `apps/signage` | Vercel             | GitHub 連携 — 自動デプロイ                  |
 
 ### Required GitHub Secrets
 

@@ -84,8 +84,11 @@ tec-nova Nagasaki（テクノバながさき）は、長崎市と長崎大学に
 
 ### 3.2 Phase 1.5（運用開始後・継続実装）
 
+> Phase 1（MVP）の3アプリ（api / checkin / admin）には含まれないが、運用開始後に追加・出荷したアプリを含む。
+
 運用と並行して実装・追加していく機能群。
 
+- **会場サイネージ（`apps/signage`）**: 大型モニター・キオスク向けの配信風表示。活動サイクル（50分活動/10分休憩）のチャイムと進行、来場・にぎわい・前回開催の集計を提示。メンター認証・PII 非表示。詳細は §9.4 と付録B、`docs/superpowers/specs/2026-05-29-signage-chime-design.md` を参照（2026-05-30 出荷）
 - メンターアプリ（スマホPWA）
 - 活動ログ記入（30分グリッド・未記入ハイライト・QR遷移）
 - 活動カテゴリ・機材マスタ
@@ -361,6 +364,18 @@ Phase 1.5以降で活動ログ・マスタ管理エンドポイントを追加�
 
 - 現スロットダッシュボード／ログ記入画面／子ども詳細画面／過去履歴
 
+### 9.4 会場サイネージ（apps/signage）
+
+大型モニター・キオスク向けの**配信（ブロードキャスト）風**画面。会場の活動進行と雰囲気を来場者・
+保護者に見せる公開面だが、**個人を特定できる情報は出さない**（人数・にぎわい等の集計表現のみ）。
+
+- **稼働判定・在館数**: 認証付き `GET /api/sessions/today` を再利用し、ターム別チェックイン数から算出
+- **動画**: YouTube IFrame Player API の自前キュー（`GET /api/signage/playlist`）。関連動画・終了画面を抑止
+- **チャイム・サイクル**: `@tecnova/shared/activity-cycle`（50分活動/10分休憩）。次チャイムまでのカウントダウンと進行を表示
+- **巡回インフォ**: 動画タイトル・来場・にぎわい・前回開催の集計（`GET /api/signage/previous-summary`）・稼働状況（`GET /api/signage/health`）を巡回
+- **認証**: checkin/admin と同じメンター・ホワイトリスト。共有の管理用 Google アカウントで運用
+- **詳細仕様**: `docs/superpowers/specs/2026-05-29-signage-chime-design.md`
+
 ---
 
 ## 10. 技術スタック
@@ -373,7 +388,7 @@ Phase 1.5以降で活動ログ・マスタ管理エンドポイントを追加�
 | データベース         | Cloudflare D1（SQLiteベース、Workersネイティブ）           |
 | ORM                  | Drizzle ORM                                                |
 | 認証                 | Better Auth（Google OAuth）                                |
-| フロントエンド       | Next.js (App Router) × 3アプリ                             |
+| フロントエンド       | Next.js (App Router)。checkin / admin / signage の 3 アプリ（加えて Phase 1.5 予定の mentor） |
 | フロントホスティング | Vercel                                                     |
 | ストレージ           | Cloudflare R2（必要時のみ・Phase 2で本格使用）             |
 | モノレポ管理         | pnpm workspaces + Turborepo + Biome                        |
@@ -394,12 +409,13 @@ tecnova-platform/
 ├── apps/
 │   ├── api/                     # Hono on Cloudflare Workers
 │   ├── checkin/                 # Next.js (iPad PWA・受付端末)
-│   └── admin/                   # Next.js (PC)
+│   ├── admin/                   # Next.js (PC)
+│   └── signage/      # Next.js (会場サイネージ・大型モニター/キオスク)
 │   # apps/mentor (スマホPWA) は Phase 1.5 で着手予定。現時点では未作成。
 ├── packages/
 │   ├── db/                      # Drizzle schema・migrations
 │   ├── ui/                      # 共通UIコンポーネント (shadcn/ui)、APIクライアント、JSTフォーマッタ、MeProvider
-│   └── shared/                  # 共通型・Zodスキーマ・Sheets連携
+│   └── shared/                  # 共通型・Zodスキーマ・Sheets連携・activity-cycle
 │   # Better Auth 設定は apps/api/src/lib/auth.ts に集約（リクエスト毎に
 │   # auth instance を作る都合上、Workers の Env を直接受け取る場所に置く）
 ├── .env.example
@@ -541,3 +557,15 @@ Phase 1 を運用に乗せるために満たすべき基準：
 | D13 | スプシ書き戻し             | あり（アクティベート時に内製ID・日時・フラグを書き戻す）          | 教員側もアクティベート状況が見える、双方向の状態管理                                                                                                                                                                              |
 | D14 | Phase 1スコープ            | チェックイン基盤のみに絞る。ログ機能はPhase 1.5                   | 運用開始に絶対必要なものだけに集中                                                                                                                                                                                                |
 | D15 | データベース選定           | Cloudflare D1（SQLite）。Neon/Hyperdrive構成からの変更            | Workersネイティブで接続管理不要・レイテンシゼロ、本プロジェクトの規模（数百人・同時数十接続）には十分。トレードオフとしてインタラクティブ・トランザクションは使えないため、アクティベート処理は補償処理ベースのsagaパターンに切替 |
+
+---
+
+## 付録B: 会場サイネージの設計判断ログ
+
+| #  | 判断項目             | 結論                                                                     | 根拠                                                                       |
+| -- | -------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| S1 | 認証                 | checkin/admin と同じメンター・ホワイトリストを共有（共有の管理用アカウントで運用） | 公開面だが信頼端末のみで運用・実装と運用を簡素化                            |
+| S2 | 公開面のPII          | 個人特定情報を出さない（人数・にぎわい・前回開催はすべて集計表現）         | ニックネーム主・最小PII原則との一貫性                                        |
+| S3 | 動画                 | YouTube（プレイリスト管理・運用者が編集可）＋自前キューで関連動画/終了画面を抑止。自前ホストはフォールバック | 運用者が編集しやすく、埋め込みの関連動画 UI を抑止できる（広告は埋め込み側で消せない制約は受容） |
+| S4 | BGM                  | OS 側 Spotify（アプリに SDK/OAuth を統合しない）。チャイムのみ Web Audio で独立合成 | 音楽配信の権利・統合コストを避け運用を簡素化                                |
+| S5 | サイクル・チャイムのロジック | 時刻・サイクル・チャイムを `@tecnova/shared/activity-cycle` に純粋ロジック化 | テスト可能・他アプリと共有                                                  |
