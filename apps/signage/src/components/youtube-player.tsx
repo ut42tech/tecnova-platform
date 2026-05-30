@@ -9,12 +9,20 @@ interface Props {
   active: boolean;
   muted: boolean;
   started: boolean;
+  onVideoChange?: (index: number) => void;
 }
 
 // IFrame は常時マウント（再読込フラッシュ防止）。未ロード時は背後のワードマークを見せ、
 // 動画ロード後に iframe を opacity:1 で前に出す（use-youtube-player が制御）。
-export function YoutubePlayer({ videoIds, active, muted, started }: Props) {
-  useYoutubePlayer({ elementId: PLAYER_ELEMENT_ID, videoIds, active, muted, started });
+export function YoutubePlayer({ videoIds, active, muted, started, onVideoChange }: Props) {
+  useYoutubePlayer({
+    elementId: PLAYER_ELEMENT_ID,
+    videoIds,
+    active,
+    muted,
+    started,
+    onVideoChange,
+  });
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-slate-950">

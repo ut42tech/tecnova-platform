@@ -41,6 +41,8 @@ interface Args {
   active: boolean; // 活動フェーズ中のみ再生
   muted: boolean; // 無音トグル
   started: boolean; // 起動タップ後（unMute はジェスチャ後のみ）
+  // いま再生中の videoId のインデックスが変わるたびに通知（インフォメーション表示用）。
+  onVideoChange?: (index: number) => void;
 }
 
 // 生成済み iframe を全画面化し、再生中だけ可視にする（未ロード時は背後のロゴを見せる）。
@@ -53,7 +55,14 @@ const styleIframe = (iframe: HTMLIFrameElement, visible: boolean): void => {
   iframe.style.opacity = visible ? '1' : '0';
 };
 
-export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }: Args): void => {
+export const useYoutubePlayer = ({
+  elementId,
+  videoIds,
+  active,
+  muted,
+  started,
+  onVideoChange,
+}: Args): void => {
   const playerRef = useRef<YT.Player | null>(null);
   const readyRef = useRef(false);
   const indexRef = useRef(0);
@@ -63,10 +72,12 @@ export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }
   const activeRef = useRef(active);
   const mutedRef = useRef(muted);
   const startedRef = useRef(started);
+  const onVideoChangeRef = useRef(onVideoChange);
   videoIdsRef.current = videoIds;
   activeRef.current = active;
   mutedRef.current = muted;
   startedRef.current = started;
+  onVideoChangeRef.current = onVideoChange;
 
   // プレーヤー生成は一度だけ（依存は elementId のみ）。StrictMode の二重マウントは
   // destroy で吸収する。active/muted/started/videoIds の変化は別 effect と ref で反映し、
@@ -80,7 +91,10 @@ export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }
       if (!player || ids.length === 0) return;
       indexRef.current = (indexRef.current + 1) % ids.length;
       const next = ids[indexRef.current];
-      if (next) player.loadVideoById(next);
+      if (next) {
+        player.loadVideoById(next);
+        onVideoChangeRef.current?.(indexRef.current);
+      }
     };
 
     const applyMute = (player: YT.Player): void => {
@@ -121,6 +135,8 @@ export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }
             if (activeRef.current) player.playVideo();
             else player.pauseVideo();
             applyMute(player);
+            // 1本目が確定したら現在トラックを通知（生成時 videoId 指定・救済どちらの経路も）。
+            if (queueStartedRef.current) onVideoChangeRef.current?.(indexRef.current);
           },
           // ENDED で次へ差し替え。プレーヤーを「終了状態」に長く留めないことで
           // 関連グリッド/up-next を実質抑止する（spec §5.2）。
@@ -153,6 +169,7 @@ export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }
     indexRef.current = 0;
     player.loadVideoById(first);
     styleIframe(player.getIframe(), true);
+    onVideoChangeRef.current?.(indexRef.current);
   }, [videoIds]);
 
   // 活動フェーズで再生 / それ以外で一時停止。

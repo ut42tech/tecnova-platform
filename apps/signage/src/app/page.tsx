@@ -35,7 +35,8 @@ export default function SignagePage() {
   const debug = useSyncExternalStore(subscribeDebug, getDebugSnapshot, getDebugServerSnapshot);
   const now = useNow(debug.debugEnabled ? 250 : 1000);
   const data = useSignageData();
-  const videoIds = usePlaylist();
+  const tracks = usePlaylist();
+  const videoIds = tracks.map((t) => t.videoId);
   const { muted, toggle } = useMute();
   const moment = classifyCycleMoment(now);
 
