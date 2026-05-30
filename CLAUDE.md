@@ -38,7 +38,8 @@ tecnova-platform/
 ├── apps/                # エンドユーザー向けアプリ
 │   ├── api/             # Hono on Cloudflare Workers
 │   ├── checkin/         # Next.js iPad PWA（受付端末）
-│   └── admin/           # Next.js 管理PC画面
+│   ├── admin/           # Next.js 管理PC画面
+│   └── signage/         # Next.js 会場サイネージ（大型モニター・キオスク）
 ├── packages/            # アプリ間で共有するライブラリ
 │   ├── db/              # Drizzle schema・migrations
 │   ├── shared/          # 共通型・Zodスキーマ・Sheets連携
@@ -49,6 +50,11 @@ tecnova-platform/
 `apps/mentor`（メンタースマホPWA）は Phase 1.5 でスコープ化されるが現時点では未実装。
 Better Auth の設定は `packages/auth` ではなく `apps/api/src/lib/auth.ts` に集約している
 （リクエスト毎に instance を作る制約上、Workers の Env を直接受け取れる場所に置くのが自然なため）。
+
+フロント3アプリ（checkin / admin / signage）はいずれも **Next.js 16 / React 19**。各
+`apps/*/CLAUDE.md` は冒頭で `@AGENTS.md` を読み込み、App Router の API がトレーニングデータと
+乖離しているため**実装前に `node_modules/next/dist/docs/` を確認する**よう指示している。
+ポート・env・PWA 設定などアプリ固有の制約は各アプリの `CLAUDE.md` を参照すること。
 
 **新しい機能の追加先を判断する基準：**
 
@@ -191,7 +197,7 @@ DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクシ�
 | マージ前の成果物レビュー依頼                  | `superpowers:requesting-code-review`                      |
 | レビュー指摘を受け取って対応                  | `superpowers:receiving-code-review`                       |
 | 完了・修正完了を宣言する前                    | `superpowers:verification-before-completion`              |
-| フロントの UI 構築（checkin / admin）         | `frontend-design` / `vercel:shadcn`                       |
+| フロントの UI 構築（checkin / admin / signage）| `frontend-design` / `vercel:shadcn`                      |
 | Next.js の設計・デバッグ                      | `vercel:nextjs`                                           |
 | ライブラリ・SDK の最新ドキュメント確認        | context7 (MCP)                                            |
 
@@ -232,11 +238,12 @@ DBは Cloudflare D1（SQLite）。インタラクティブ・トランザクシ�
 pnpm dev
 
 # 特定アプリのみ起動
-# 注: workspace 名は package.json の "name" を使う。フロント2つは
-# @tecnova/ プレフィックスを付けていない（checkin / admin）。
-pnpm --filter @tecnova/api dev
-pnpm --filter checkin dev
-pnpm --filter admin dev
+# 注: workspace 名は package.json の "name" を使う。フロント3つは
+# @tecnova/ プレフィックスを付けていない（checkin / admin / signage）。
+pnpm --filter @tecnova/api dev   # :8787
+pnpm --filter checkin dev        # :3000
+pnpm --filter admin dev          # :3001
+pnpm --filter signage dev        # :3002
 
 # Lint & format
 pnpm biome check --write .
