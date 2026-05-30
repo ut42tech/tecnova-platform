@@ -1,40 +1,50 @@
-# サイネージ＋チャイム アプリ 実装計画
+# サイネージ＋チャイム アプリ 実装計画（YouTube 版）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 大型モニター常時表示用の認証付きサイネージアプリ `apps/signage` を新設し、50分活動／10分休憩サイクルに連動した動画表示・カウントダウン・チャイムを自動制御する。
+> **改訂 2026-05-30:** 設計 spec の YouTube 改訂（動画レイヤを self-host HTML5 `<video>` → **YouTube IFrame Player API 自前キュー ＋ YouTube Data API**、BGM を **OS側 Spotify**＝アプリ非統合）に合わせて本計画を更新した。チャイム・50/10サイクル・状態機械・認証・`/api/sessions/today` ポーリングは不変。差分は (1) `packages/shared` に `youtube.ts`／`schemas/signage.ts` を追加、(2) `apps/api` に `GET /api/signage/playlist` を新設（旧版は「設定のみ」だった）、(3) フロントの動画レイヤを YouTube プレーヤー＋自前キュー＋無音トグルに置換。
 
-**Architecture:** 端末ローカル時計から純粋ロジック（`@tecnova/shared/activity-cycle`）で活動/休憩フェーズとチャイム時刻を算出し、稼働判定は認証付き既存 `GET /api/sessions/today` のターム別チェックイン数（初回チェックインで稼働開始・ターム終了まで sticky）で行う。画面は L2（動画フルスクリーン＋情報バー）で、フェーズ境界にクロスフェードし Web Audio 合成チャイムを鳴らす。認証は checkin/admin と同じメンター・ホワイトリスト（共有管理アカウントで1回ログイン）。
+**Goal:** 大型モニター常時表示用の認証付きサイネージアプリ `apps/signage` を新設し、50分活動／10分休憩サイクルに連動した **YouTube動画表示**・カウントダウン・チャイムを自動制御する。
 
-**Tech Stack:** Next.js 16.2.4 / React 19.2.4 / TypeScript / Tailwind v4（`@tecnova/ui`）/ Better Auth（`better-auth/react`）/ motion / Web Audio API / Screen Wake Lock API / vitest（`packages/shared` のみ新規導入）。
+**Architecture:** 端末ローカル時計から純粋ロジック（`@tecnova/shared/activity-cycle`）で活動/休憩フェーズとチャイム時刻を算出し、稼働判定は認証付き既存 `GET /api/sessions/today` のターム別チェックイン数（初回チェックインで稼働開始・ターム終了まで sticky）で行う。動画は **YouTube IFrame Player API の自前キュー**（`ENDED`/`onError` で次の videoId へ `loadVideoById`）で1本ずつ流し、再生順は YouTube 上のプレイリストを Worker の `GET /api/signage/playlist`（YouTube Data API v3・APIキー・サーバ側キャッシュ）が順序付き videoId 列にして返す。音声は **無音／音ありのグローバルトグル（既定=無音）** のみ持ち、BGMは OS側 Spotify（アプリ非制御）。画面は L2（動画フルスクリーン＋情報バー）で、フェーズ境界にクロスフェードし Web Audio 合成チャイムを鳴らす。認証は checkin/admin と同じメンター・ホワイトリスト（共有管理アカウントで1回ログイン）。
 
-設計の根拠は `docs/superpowers/specs/2026-05-29-signage-chime-design.md` を参照。
+**Tech Stack:** Next.js 16.2.4 / React 19.2.4 / TypeScript / Tailwind v4（`@tecnova/ui`）/ Better Auth（`better-auth/react`）/ motion / Web Audio API / Screen Wake Lock API / **YouTube IFrame Player API（`@types/youtube` のみ devDep 追加・再生用 npm 依存なし）** / **YouTube Data API v3（Worker から APIキー＋plain fetch）** / vitest（`packages/shared` のみ新規導入）。BGMは OS側 Spotify（アプリ非統合）。
+
+設計の根拠は `docs/superpowers/specs/2026-05-29-signage-chime-design.md`（2026-05-30 YouTube 改訂版）を参照。
 
 ---
 
 ## File Structure
 
-**packages/shared（共有純粋ロジック）**
+**packages/shared（共有純粋ロジック＋契約）**
 - `src/activity-cycle.ts`（新規）— 50/10サイクル分類・チャイムイベント列・カウントダウン
-- `src/activity-cycle.test.ts`（新規）— 上記の単体テスト
-- `package.json`（変更）— `"./activity-cycle"` export ＋ vitest devDep ＋ `test` スクリプト
+- `src/activity-cycle.test.ts`（新規）— 上記の単体テスト（vitest）
+- `src/youtube.ts`（新規）— YouTube Data API `playlistItems.list` の fetch ラッパ（APIキーのみ・ページング・`privacyStatus` フィルタ・`position` 昇順ソート。Workers安全）
+- `src/schemas/signage.ts`（新規）— `signagePlaylistItemSchema` / `signagePlaylistResponseSchema` ＋ `z.infer` 型
+- `src/schemas/index.ts`（変更）— `export * from './signage'` を追加
+- `package.json`（変更）— `exports` に `"./activity-cycle"` と `"./youtube"` を追加 ＋ vitest devDep ＋ `test` スクリプト
 
-**apps/api（設定のみ・コード変更なし）**
-- `.dev.vars` / `.env.example`（変更）— `TRUSTED_ORIGINS` にサイネージ origin を追加
+**apps/api（コードあり）**
+- `src/routes/signage.ts`（新規）— `GET /api/signage/playlist`（`requireAuthenticatedMentor` 配下）
+- `src/lib/signage.ts`（新規）— `fetchSignagePlaylist(env)`（`youtube.ts` を呼び・数分の module-scope キャッシュ）
+- `src/index.ts`（変更）— `app.route('/api/signage', signageRoute)` を追加
+- `src/types.ts`（変更）— `Bindings` に `YOUTUBE_API_KEY` / `YOUTUBE_PLAYLIST_ID` を追加
+- `.dev.vars`（変更・git管理外）— `TRUSTED_ORIGINS` にサイネージ origin、`YOUTUBE_API_KEY`、`YOUTUBE_PLAYLIST_ID` を追加
+- `.env.example`（変更）— `YOUTUBE_API_KEY` / `YOUTUBE_PLAYLIST_ID`（名前のみ）と `TRUSTED_ORIGINS` 例を更新
 
 **apps/signage（新規アプリ）**
-- 設定: `package.json` / `next.config.ts` / `tsconfig.json` / `postcss.config.mjs` / `components.json` / `.gitignore`
+- 設定: `package.json`（`@types/youtube` devDep・`@zxing` なし）/ `next.config.ts` / `tsconfig.json` / `postcss.config.mjs` / `components.json` / `.gitignore`
 - 認証: `src/lib/auth-client.ts` / `src/components/app-shell.tsx` / `src/app/login/page.tsx`
 - ルート: `src/app/layout.tsx` / `src/app/manifest.ts` / `src/app/page.tsx`（状態機械）
-- ロジック: `src/lib/now.ts` / `src/lib/use-now.ts` / `src/lib/time.ts` / `src/lib/chimes.ts` / `src/lib/use-chime-scheduler.ts` / `src/lib/use-wake-lock.ts` / `src/lib/use-signage-data.ts`
-- 設定値: `src/config/playlist.ts`
-- 表示: `src/components/{stage,info-bar,break-screen,idle-screen,tap-to-start}.tsx`
+- ロジック: `src/lib/now.ts` / `src/lib/use-now.ts` / `src/lib/time.ts` / `src/lib/use-wake-lock.ts` / `src/lib/chimes.ts` / `src/lib/use-chime-scheduler.ts` / `src/lib/use-signage-data.ts` / `src/lib/use-playlist.ts` / `src/lib/use-youtube-player.ts` / `src/lib/use-mute.ts`
+- 設定値: `src/config/playlist.ts`（`FALLBACK_VIDEO_IDS: string[]`）
+- 表示: `src/components/{youtube-player,info-bar,break-screen,idle-screen,tap-to-start,mute-toggle}.tsx`
 - ドキュメント: `CLAUDE.md` / `AGENTS.md`
 
 **docs**
-- `docs/architecture.md`（変更）— クライアント一覧に `apps/signage` を追記
+- `docs/architecture.md`（変更）— クライアント一覧に `apps/signage`（認証あり）を追記
 
-各ファイルは単一責務。`now.ts`（時刻ソース）・`chimes.ts`（音）・`use-chime-scheduler.ts`（発火）・`use-signage-data.ts`（データ）・各表示コンポーネントは独立して理解・差し替え可能。
+各ファイルは単一責務。`now.ts`（時刻ソース）・`chimes.ts`（音）・`use-chime-scheduler.ts`（発火）・`use-signage-data.ts`（データ）・`use-playlist.ts`（プレイリスト取得）・`use-youtube-player.ts`（IFrame ライフサイクル＋自前キュー）・各表示コンポーネントは独立して理解・差し替え可能。
 
 ---
 
@@ -47,21 +57,7 @@
 
 - [ ] **Step 1: vitest を devDep と test スクリプトに追加**
 
-`packages/shared/package.json` の `scripts` と `devDependencies` を以下に変更（他キーは既存のまま）：
-
-```json
-  "scripts": {
-    "type-check": "tsc --noEmit",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260502.1",
-    "typescript": "^6.0.3",
-    "vitest": "^3.2.4"
-  },
-```
-
-そして `exports` に `"./activity-cycle"` を追加（`"./venue-schedule"` の隣）：
+`packages/shared/package.json` の `scripts` に `"test": "vitest run"`、`devDependencies` に `"vitest": "^3.2.4"` を追加（他キーは既存のまま）。そして `exports` に `"./activity-cycle"` を追加（`"./venue-schedule"` の隣）：
 
 ```json
   "exports": {
@@ -69,14 +65,14 @@
     "./google-sheets": "./src/google-sheets.ts",
     "./schemas": "./src/schemas/index.ts",
     "./venue-schedule": "./src/venue-schedule.ts",
-    "./activity-cycle": "./src/activity-cycle.ts"
+    "./activity-cycle": "./src/activity-cycle.ts",
+    "./youtube": "./src/youtube.ts"
   },
 ```
 
-- [ ] **Step 2: 依存をインストール**
+（`"./youtube"` は Task 2 で使うが、exports は一度に足しておく。）
 
-Run: `pnpm install`
-Expected: vitest が `packages/shared` に追加され lockfile 更新。
+- [ ] **Step 2: 依存をインストール** — Run: `pnpm install`（vitest が `packages/shared` に追加され lockfile 更新）。
 
 - [ ] **Step 3: 失敗するテストを書く**
 
@@ -167,10 +163,7 @@ describe('msUntilNextBoundary', () => {
 });
 ```
 
-- [ ] **Step 4: テストが失敗することを確認**
-
-Run: `pnpm --filter @tecnova/shared test`
-Expected: FAIL（`activity-cycle.ts` 不在で import 解決エラー）。
+- [ ] **Step 4: テストが失敗することを確認** — Run: `pnpm --filter @tecnova/shared test`（`activity-cycle.ts` 不在で import 解決エラー）。
 
 - [ ] **Step 5: 実装を書く**
 
@@ -198,7 +191,7 @@ const jstMinuteOfDay = (instant: Date): number => {
   return hour * 60 + minute;
 };
 
-// ref の JST 暦日における JST 通算分 m を UTC instant に変換（termEndInstant と同手法）。
+// ref の JST 暦日における JST 通算分 minuteOfDay を UTC instant に変換（termEndInstant と同手法）。
 const jstInstantOnDayOf = (ref: Date, minuteOfDay: number): Date => {
   const { year, month, day } = toJstWallClock(ref);
   const hh = Math.floor(minuteOfDay / 60);
@@ -295,16 +288,8 @@ export const secondsUntilNextBoundary = (instant: Date): number | null => {
 };
 ```
 
-- [ ] **Step 6: テストが通ることを確認**
-
-Run: `pnpm --filter @tecnova/shared test`
-Expected: PASS（全ケース green）。
-
-- [ ] **Step 7: 型チェック**
-
-Run: `pnpm --filter @tecnova/shared type-check`
-Expected: エラーなし。
-
+- [ ] **Step 6: テストが通ることを確認** — Run: `pnpm --filter @tecnova/shared test`（全ケース green）。
+- [ ] **Step 7: 型チェック** — Run: `pnpm --filter @tecnova/shared type-check`。
 - [ ] **Step 8: コミット**
 
 ```bash
@@ -314,49 +299,225 @@ git commit -m "feat(shared): add activity-cycle (50/10 schedule + chime events)"
 
 ---
 
-## Task 2: API の `TRUSTED_ORIGINS` にサイネージ origin を追加（設定のみ）
+## Task 2: 共有 YouTube 契約 `youtube.ts` ＋ `schemas/signage.ts`
 
 **Files:**
-- Modify: `apps/api/.dev.vars`（ローカル開発用・git管理外）
-- Modify: `.env.example`（コメント例）
+- Create: `packages/shared/src/youtube.ts`
+- Create: `packages/shared/src/schemas/signage.ts`
+- Modify: `packages/shared/src/schemas/index.ts`
 
-- [ ] **Step 1: `.dev.vars` に dev origin を追加**
+（`package.json` の `"./youtube"` export は Task 1 Step 1 で追加済み。）
 
-`apps/api/.dev.vars` の `TRUSTED_ORIGINS` 行に `http://localhost:3002` を追記（カンマ区切り）：
+- [ ] **Step 1: `youtube.ts`（Data API `playlistItems.list` ラッパ・Workers安全）**
+
+Create `packages/shared/src/youtube.ts`:
+
+```ts
+// YouTube Data API v3 playlistItems.list の薄いフェッチラッパ。
+// googleapis は Node 依存で Workers 非対応のため使わず、API キー + fetch 直叩き。
+// google-sheets.ts の「サーバ側 fetch + 資格情報は引数で受け取る」流儀に倣うが、
+// OAuth/JWT は不要（APIキーのみ）。順序は snippet.position 昇順、再生不能動画は除外する。
+
+export interface YouTubePlaylistVideo {
+  videoId: string;
+  title?: string;
+}
+
+interface PlaylistItem {
+  snippet?: {
+    position?: number;
+    title?: string;
+    resourceId?: { videoId?: string };
+  };
+  contentDetails?: { videoId?: string };
+  status?: { privacyStatus?: string };
+}
+
+interface PlaylistItemsResponse {
+  items?: PlaylistItem[];
+  nextPageToken?: string;
+}
+
+// public / unlisted のみ埋め込み再生可能。private・未指定・削除済み(videoId欠落)は除外。
+const PLAYABLE_PRIVACY = new Set(['public', 'unlisted']);
+
+// playlistId の全ページを取得し、再生可能・position 昇順の videoId 列を返す。
+// part に複数指定してもクォータは 1 呼び出し 1 ユニットのまま（spec §5.1）。
+export const fetchPlaylistVideos = async (
+  apiKey: string,
+  playlistId: string,
+): Promise<YouTubePlaylistVideo[]> => {
+  const collected: { position: number; video: YouTubePlaylistVideo }[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL('https://www.googleapis.com/youtube/v3/playlistItems');
+    url.searchParams.set('part', 'snippet,contentDetails,status');
+    url.searchParams.set('playlistId', playlistId);
+    url.searchParams.set('maxResults', '50');
+    url.searchParams.set('key', apiKey);
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`YouTube playlistItems fetch failed: ${resp.status} ${body}`);
+    }
+    const data = (await resp.json()) as PlaylistItemsResponse;
+
+    for (const item of data.items ?? []) {
+      const videoId = item.contentDetails?.videoId ?? item.snippet?.resourceId?.videoId;
+      const privacy = item.status?.privacyStatus;
+      if (!videoId || !privacy || !PLAYABLE_PRIVACY.has(privacy)) continue;
+      collected.push({
+        // position 欠落時は末尾送り。元の取得順ではなく position を正とする。
+        position: item.snippet?.position ?? Number.MAX_SAFE_INTEGER,
+        video: { videoId, title: item.snippet?.title },
+      });
+    }
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  collected.sort((a, b) => a.position - b.position);
+  return collected.map((c) => c.video);
+};
+```
+
+- [ ] **Step 2: `schemas/signage.ts`**
+
+Create `packages/shared/src/schemas/signage.ts`:
+
+```ts
+import { z } from 'zod';
+
+// `GET /api/signage/playlist`
+export const signagePlaylistItemSchema = z.object({
+  videoId: z.string(),
+  title: z.string().optional(),
+});
+
+export const signagePlaylistResponseSchema = z.object({
+  items: z.array(signagePlaylistItemSchema),
+  // 次回取得推奨時刻（ISO 8601 UTC）。クライアントのポーリング間隔ヒント＝キャッシュ満了時刻。
+  refreshAt: z.string(),
+});
+
+export type SignagePlaylistItem = z.infer<typeof signagePlaylistItemSchema>;
+export type SignagePlaylistResponse = z.infer<typeof signagePlaylistResponseSchema>;
+```
+
+- [ ] **Step 3: barrel に追加** — `packages/shared/src/schemas/index.ts` に `export * from './signage';` を追加。
+
+- [ ] **Step 4: 型チェック** — Run: `pnpm --filter @tecnova/shared type-check`。
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add packages/shared/src/youtube.ts packages/shared/src/schemas/signage.ts packages/shared/src/schemas/index.ts
+git commit -m "feat(shared): add YouTube Data API wrapper and signage playlist schema"
+```
+
+---
+
+## Task 3: API `GET /api/signage/playlist`（route ＋ lib ＋ Bindings ＋ mount ＋ 設定）
+
+**Files:**
+- Modify: `apps/api/src/types.ts`
+- Create: `apps/api/src/lib/signage.ts`
+- Create: `apps/api/src/routes/signage.ts`
+- Modify: `apps/api/src/index.ts`
+- Modify: `apps/api/.dev.vars`（ローカル・git管理外）/ `.env.example`
+
+- [ ] **Step 1: `Bindings` に YouTube env を追加**
+
+`apps/api/src/types.ts` の `Bindings` に `TRUSTED_ORIGINS` の後ろへ：
+
+```ts
+  YOUTUBE_API_KEY: string;
+  YOUTUBE_PLAYLIST_ID: string;
+```
+
+- [ ] **Step 2: `lib/signage.ts`（数分の module-scope キャッシュ）**
+
+Create `apps/api/src/lib/signage.ts`:
+
+```ts
+import { fetchPlaylistVideos, type YouTubePlaylistVideo } from '@tecnova/shared/youtube';
+import type { Bindings } from '../types';
+
+// プレイリストはサーバ側で数分キャッシュする。Data API のクォータ節約と、プレイリスト
+// 更新の反映遅延（数分）は許容（spec §5.1）。Workers がリサイクルされたら自然に再取得。
+const CACHE_TTL_MS = 5 * 60_000;
+
+let cache: { items: YouTubePlaylistVideo[]; expiresAt: number } | null = null;
+
+export interface SignagePlaylist {
+  items: YouTubePlaylistVideo[];
+  refreshAt: string;
+}
+
+export const fetchSignagePlaylist = async (env: Bindings): Promise<SignagePlaylist> => {
+  const now = Date.now();
+  if (!cache || cache.expiresAt <= now) {
+    const items = await fetchPlaylistVideos(env.YOUTUBE_API_KEY, env.YOUTUBE_PLAYLIST_ID);
+    cache = { items, expiresAt: now + CACHE_TTL_MS };
+  }
+  return { items: cache.items, refreshAt: new Date(cache.expiresAt).toISOString() };
+};
+```
+
+- [ ] **Step 3: `routes/signage.ts`**
+
+Create `apps/api/src/routes/signage.ts`:
+
+```ts
+import { Hono } from 'hono';
+import { fetchSignagePlaylist } from '../lib/signage';
+import type { AppEnv } from '../types';
+
+export const signageRoute = new Hono<AppEnv>();
+
+// requireAuthenticatedMentor は index.ts で /api/* に適用済みなので、ここでは付けない。
+// 取得失敗（APIキー未設定・YouTube エラー等）は throw され apiErrorHandler が 500 化し、
+// クライアントは §5.4 のフォールバック videoId に倒れる。
+signageRoute.get('/playlist', async (c) => c.json(await fetchSignagePlaylist(c.env)));
+```
+
+- [ ] **Step 4: `index.ts` にマウント** — import を追加し、`app.route('/api/pre-registrations', preRegistrationsRoute);` の後ろに `app.route('/api/signage', signageRoute);` を追加（`/api/*` の auth ミドルウェアは登録済みなので自動適用）。
+
+- [ ] **Step 5: 設定（`.dev.vars` / `.env.example`）**
+
+`apps/api/.dev.vars`（git管理外・実値）の `TRUSTED_ORIGINS` に `http://localhost:3002` を追記し、`YOUTUBE_API_KEY` / `YOUTUBE_PLAYLIST_ID` を追加：
 
 ```
 TRUSTED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3002
+YOUTUBE_API_KEY=<YouTube Data API 限定キー>
+YOUTUBE_PLAYLIST_ID=<対象プレイリストID>
 ```
 
-- [ ] **Step 2: `.env.example` のコメント例を更新**
+`.env.example` には**名前のみ**（Public リポジトリ方針）。`TRUSTED_ORIGINS` 例コメントに signage(3002) を含める。
 
-`.env.example` の `TRUSTED_ORIGINS` 付近のコメントに signage(3002) を含める（値は空のまま、例コメントのみ）。
+- [ ] **Step 6: 型チェック** — Run: `pnpm --filter @tecnova/api type-check`。
 
-- [ ] **Step 3: API を再起動して疎通確認（手動）**
+- [ ] **Step 7: 疎通（手動・任意）** — `.dev.vars` に実 YouTube キーがあれば、ログイン済みブラウザから `GET http://localhost:8787/api/signage/playlist` が 200・`items[].videoId` を `position` 昇順で返すこと、未ログインで 401、数分キャッシュ（連続呼び出しで Data API を叩かない）を確認。
 
-Run: `pnpm --filter @tecnova/api dev`（別ターミナル）
-確認: 既存メンター（または共有）アカウントでログイン済みのブラウザから `http://localhost:8787/api/sessions/today` が 200 を返し、`sessions[].term` と `summary.currentlyPresent` を含む。未ログインだと 401。
-Expected: 認証付きで取得可能。`TRUSTED_ORIGINS` はコード変更なしで CORS と Better Auth 双方に反映。
-
-- [ ] **Step 4: コミット**
+- [ ] **Step 8: コミット**
 
 ```bash
-git add .env.example
-git commit -m "chore(api): document signage origin (3002) in TRUSTED_ORIGINS"
+git add apps/api/src/types.ts apps/api/src/lib/signage.ts apps/api/src/routes/signage.ts apps/api/src/index.ts .env.example
+git commit -m "feat(api): add GET /api/signage/playlist (YouTube Data API, cached)"
 ```
 （`.dev.vars` は git 管理外のためコミットしない。）
 
 ---
 
-## Task 3: `apps/signage` スキャフォルド（:3002 で起動するところまで）
+## Task 4: `apps/signage` スキャフォルド（:3002 で起動するところまで）
 
 **Files（すべて新規・`apps/signage/` 配下）:**
 - `package.json` / `next.config.ts` / `tsconfig.json` / `postcss.config.mjs` / `components.json` / `.gitignore`
 - `src/app/layout.tsx`（暫定）/ `src/app/page.tsx`（暫定）/ `src/app/manifest.ts`
 
-- [ ] **Step 1: `package.json`**
-
-Create `apps/signage/package.json`:
+- [ ] **Step 1: `package.json`**（checkin から複製し `@zxing/browser` を除外、`@types/youtube` を devDep に追加）
 
 ```json
 {
@@ -384,6 +545,7 @@ Create `apps/signage/package.json`:
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/youtube": "^0.1.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
@@ -392,7 +554,7 @@ Create `apps/signage/package.json`:
 
 - [ ] **Step 2: ビルド設定ファイル**
 
-Create `apps/signage/next.config.ts`:
+`next.config.ts`（checkin と同じ・`viewTransition` は使わないので省略可）:
 
 ```ts
 import type { NextConfig } from 'next';
@@ -405,74 +567,13 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-Create `apps/signage/postcss.config.mjs`:
+`postcss.config.mjs`: `export { default } from '@tecnova/ui/postcss.config';`
 
-```ts
-export { default } from '@tecnova/ui/postcss.config';
-```
-
-Create `apps/signage/tsconfig.json`（checkin と同一）:
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": {
-      "@/*": ["./src/*"],
-      "@tecnova/ui/*": ["../../packages/ui/src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts", "**/*.mts"],
-  "exclude": ["node_modules"]
-}
-```
-
-Create `apps/signage/components.json`（checkin と同一）:
-
-```json
-{
-  "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "radix-maia",
-  "rsc": true,
-  "tsx": true,
-  "tailwind": {
-    "config": "",
-    "css": "../../packages/ui/src/styles/globals.css",
-    "baseColor": "neutral",
-    "cssVariables": true
-  },
-  "iconLibrary": "tabler",
-  "aliases": {
-    "components": "@/components",
-    "hooks": "@/hooks",
-    "lib": "@/lib",
-    "utils": "@tecnova/ui/lib/utils",
-    "ui": "@tecnova/ui/components"
-  },
-  "rtl": false,
-  "menuColor": "default-translucent",
-  "menuAccent": "subtle"
-}
-```
-
-Create `apps/signage/.gitignore`（checkin の `.gitignore` を verbatim でコピー： `/node_modules`・`/.next/`・`.env*`・`.vercel`・`next-env.d.ts` 等を含むもの）。
+`tsconfig.json`（checkin と同一。`paths` に `@/*` と `@tecnova/ui/*`）。`components.json`（checkin と同一）。`.gitignore`（checkin から verbatim コピー：`/node_modules`・`/.next/`・`.env*`・`next-env.d.ts` 等）。
 
 - [ ] **Step 3: 暫定 layout / manifest / page**
 
-Create `apps/signage/src/app/manifest.ts`:
+`src/app/manifest.ts`（**`display: 'fullscreen'`・`orientation: 'landscape'`**）:
 
 ```ts
 import type { MetadataRoute } from 'next';
@@ -494,7 +595,7 @@ export default function manifest(): MetadataRoute.Manifest {
 }
 ```
 
-Create `apps/signage/src/app/layout.tsx`（暫定：この時点では AppShell 未作成なので children 直描画。Task 4 で AppShell に差し替える）:
+`src/app/layout.tsx`（暫定：この時点では AppShell 未作成なので children 直描画。Task 5 で AppShell に差し替える）:
 
 ```tsx
 import type { Metadata, Viewport } from 'next';
@@ -530,7 +631,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
 }
 ```
 
-Create `apps/signage/src/app/page.tsx`（暫定プレースホルダ。Task 10 で状態機械に差し替える）:
+`src/app/page.tsx`（暫定プレースホルダ。Task 12 で状態機械に差し替える）:
 
 ```tsx
 export default function SignagePage() {
@@ -538,18 +639,8 @@ export default function SignagePage() {
 }
 ```
 
-- [ ] **Step 4: インストールして起動確認**
-
-Run: `pnpm install`
-Run: `pnpm --filter signage dev`
-確認: `http://localhost:3002` が「signage」を表示。
-Expected: :3002 で起動。
-
-- [ ] **Step 5: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
-
+- [ ] **Step 4: インストールして起動確認** — Run: `pnpm install` → `pnpm --filter signage dev`（`http://localhost:3002` が「signage」を表示）。
+- [ ] **Step 5: 型チェック** — Run: `pnpm --filter signage type-check`。
 - [ ] **Step 6: コミット**
 
 ```bash
@@ -559,7 +650,7 @@ git commit -m "feat(signage): scaffold Next.js app on port 3002"
 
 ---
 
-## Task 4: 認証ゲート（auth-client / AppShell / login）
+## Task 5: 認証ゲート（auth-client / AppShell / login）
 
 **Files:**
 - Create: `apps/signage/src/lib/auth-client.ts`
@@ -567,9 +658,7 @@ git commit -m "feat(signage): scaffold Next.js app on port 3002"
 - Create: `apps/signage/src/app/login/page.tsx`
 - Modify: `apps/signage/src/app/layout.tsx`
 
-- [ ] **Step 1: Better Auth クライアント**
-
-Create `apps/signage/src/lib/auth-client.ts`:
+- [ ] **Step 1: Better Auth クライアント**（checkin と同一）
 
 ```ts
 import { createAuthClient } from 'better-auth/react';
@@ -585,9 +674,7 @@ export const authClient = createAuthClient({
 });
 ```
 
-- [ ] **Step 2: AppShell（最小・ヘッダなし）**
-
-Create `apps/signage/src/components/app-shell.tsx`（checkin と違い全画面表示なのでヘッダ chrome は持たず、`MeProvider` だけで包む）:
+- [ ] **Step 2: AppShell（最小・ヘッダ chrome なし＝全画面サイネージ）**
 
 ```tsx
 'use client';
@@ -615,8 +702,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 ```
 
 - [ ] **Step 3: ログインページ（自己完結・`@tecnova/ui` のみ依存）**
-
-Create `apps/signage/src/app/login/page.tsx`:
 
 ```tsx
 'use client';
@@ -676,31 +761,9 @@ export default function LoginPage() {
 }
 ```
 
-- [ ] **Step 4: layout を AppShell でラップ**
-
-Modify `apps/signage/src/app/layout.tsx` — import を追加し body を差し替え：
-
-```tsx
-import { AppShell } from '@/components/app-shell';
-```
-
-```tsx
-      <body className="min-h-full bg-slate-950">
-        <AppShell>{children}</AppShell>
-      </body>
-```
-
-- [ ] **Step 5: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
-
-- [ ] **Step 6: 認証ゲートを手動確認**
-
-Run: `pnpm --filter signage dev`（api も起動しておく）
-確認: 未ログインで `http://localhost:3002` → `/login` へ遷移。共有（or 任意の許可リスト）アカウントでログイン → `/` に戻り「signage」プレースホルダが表示。
-Expected: 401→/login、ログイン後に本体表示。
-
+- [ ] **Step 4: layout を AppShell でラップ** — `import { AppShell } from '@/components/app-shell';` を足し、body を `<AppShell>{children}</AppShell>` に差し替え。
+- [ ] **Step 5: 型チェック** — Run: `pnpm --filter signage type-check`。
+- [ ] **Step 6: 認証ゲートを手動確認**（未ログインで `/login`、ログイン後にプレースホルダ表示）。
 - [ ] **Step 7: コミット**
 
 ```bash
@@ -710,16 +773,12 @@ git commit -m "feat(signage): add mentor-whitelist auth (auth-client, MeProvider
 
 ---
 
-## Task 5: 時刻ソースとユーティリティ（`now` / `use-now` / `time`）
+## Task 6: 時刻ソースとユーティリティ（`now` / `use-now` / `time` / `use-wake-lock`）
 
 **Files:**
-- Create: `apps/signage/src/lib/now.ts`
-- Create: `apps/signage/src/lib/use-now.ts`
-- Create: `apps/signage/src/lib/time.ts`
+- Create: `apps/signage/src/lib/now.ts` / `use-now.ts` / `time.ts` / `use-wake-lock.ts`
 
 - [ ] **Step 1: `now.ts`（`?now=` 上書き対応の時刻ソース）**
-
-Create `apps/signage/src/lib/now.ts`:
 
 ```ts
 // 端末のローカル時計を返す。?now=ISO クエリがある場合のみ、その時刻を起点に
@@ -742,9 +801,7 @@ export const getNow = (): Date => {
 };
 ```
 
-- [ ] **Step 2: `use-now.ts`（毎秒 re-render 用フック）**
-
-Create `apps/signage/src/lib/use-now.ts`:
+- [ ] **Step 2: `use-now.ts`**
 
 ```ts
 'use client';
@@ -763,9 +820,7 @@ export const useNow = (intervalMs = 1000): Date => {
 };
 ```
 
-- [ ] **Step 3: `time.ts`（JST 時刻・カウントダウン整形）**
-
-Create `apps/signage/src/lib/time.ts`:
+- [ ] **Step 3: `time.ts`**
 
 ```ts
 const jstHmFormatter = new Intl.DateTimeFormat('en-GB', {
@@ -787,9 +842,7 @@ export const mmss = (totalSeconds: number): string => {
 };
 ```
 
-- [ ] **Step 4: `use-wake-lock.ts`（スリープ防止・visibility で再取得）**
-
-Create `apps/signage/src/lib/use-wake-lock.ts`:
+- [ ] **Step 4: `use-wake-lock.ts`**
 
 ```ts
 'use client';
@@ -824,11 +877,7 @@ export const useWakeLock = (enabled: boolean): void => {
 };
 ```
 
-- [ ] **Step 5: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし（`WakeLockSentinel`/`navigator.wakeLock` は lib.dom 由来）。
-
+- [ ] **Step 5: 型チェック** — Run: `pnpm --filter signage type-check`。
 - [ ] **Step 6: コミット**
 
 ```bash
@@ -838,14 +887,11 @@ git commit -m "feat(signage): add time utils (now override, useNow, jst/mmss) an
 
 ---
 
-## Task 6: チャイム音（Web Audio 合成）`chimes.ts`
+## Task 7: チャイム音（Web Audio 合成）`chimes.ts`
 
-**Files:**
-- Create: `apps/signage/src/lib/chimes.ts`
+**Files:** Create `apps/signage/src/lib/chimes.ts`
 
 - [ ] **Step 1: 実装**
-
-Create `apps/signage/src/lib/chimes.ts`:
 
 ```ts
 import type { ChimeKind } from '@tecnova/shared/activity-cycle';
@@ -906,12 +952,7 @@ export const playChime = (kind: ChimeKind): void => {
 };
 ```
 
-- [ ] **Step 2: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
-
-- [ ] **Step 3: コミット**
+- [ ] **Step 2: 型チェック** → **Step 3: コミット**
 
 ```bash
 git add apps/signage/src/lib/chimes.ts
@@ -920,14 +961,11 @@ git commit -m "feat(signage): synthesize chime tones via Web Audio"
 
 ---
 
-## Task 7: チャイムスケジューラ `use-chime-scheduler.ts`
+## Task 8: チャイムスケジューラ `use-chime-scheduler.ts`
 
-**Files:**
-- Create: `apps/signage/src/lib/use-chime-scheduler.ts`
+**Files:** Create `apps/signage/src/lib/use-chime-scheduler.ts`
 
 - [ ] **Step 1: 実装（自己補正 setTimeout ＋ key dedup）**
-
-Create `apps/signage/src/lib/use-chime-scheduler.ts`:
 
 ```ts
 'use client';
@@ -994,12 +1032,7 @@ export const useChimeScheduler = ({ enabled, isTermActive, onChime, getNow }: Ar
 };
 ```
 
-- [ ] **Step 2: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
-
-- [ ] **Step 3: コミット**
+- [ ] **Step 2: 型チェック** → **Step 3: コミット**
 
 ```bash
 git add apps/signage/src/lib/use-chime-scheduler.ts
@@ -1008,20 +1041,17 @@ git commit -m "feat(signage): drift-free chime scheduler with per-boundary dedup
 
 ---
 
-## Task 8: ライブデータ取得 `use-signage-data.ts`
+## Task 9: ライブデータ取得 `use-signage-data.ts`
 
-**Files:**
-- Create: `apps/signage/src/lib/use-signage-data.ts`
+**Files:** Create `apps/signage/src/lib/use-signage-data.ts`
 
 - [ ] **Step 1: 実装（`/api/sessions/today` をポーリングしターム別に集計）**
-
-Create `apps/signage/src/lib/use-signage-data.ts`:
 
 ```ts
 'use client';
 
-import type { TermId } from '@tecnova/shared/venue-schedule';
 import type { TodaySessionsResponse } from '@tecnova/shared/schemas';
+import type { TermId } from '@tecnova/shared/venue-schedule';
 import { apiJson } from '@tecnova/ui/lib/api-client';
 import { useEffect, useState } from 'react';
 
@@ -1075,12 +1105,7 @@ export const useSignageData = (): SignageData => {
 };
 ```
 
-- [ ] **Step 2: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし（`TodaySessionsResponse` は `@tecnova/shared/schemas` からエクスポート済み）。
-
-- [ ] **Step 3: コミット**
+- [ ] **Step 2: 型チェック** → **Step 3: コミット**
 
 ```bash
 git add apps/signage/src/lib/use-signage-data.ts
@@ -1089,113 +1114,336 @@ git commit -m "feat(signage): poll /api/sessions/today and derive per-term count
 
 ---
 
-## Task 9: 動画プレイリスト ＋ Stage（動画レイヤ）
+## Task 10: 動画レイヤ（YouTube・自前キュー・無音トグル）
 
 **Files:**
 - Create: `apps/signage/src/config/playlist.ts`
-- Create: `apps/signage/src/components/stage.tsx`
+- Create: `apps/signage/src/lib/use-playlist.ts`
+- Create: `apps/signage/src/lib/use-mute.ts`
+- Create: `apps/signage/src/lib/use-youtube-player.ts`
+- Create: `apps/signage/src/components/youtube-player.tsx`
+- Create: `apps/signage/src/components/mute-toggle.tsx`
 
-- [ ] **Step 1: プレイリスト設定**
-
-Create `apps/signage/src/config/playlist.ts`:
+- [ ] **Step 1: フォールバック設定 `config/playlist.ts`**
 
 ```ts
-export interface VideoItem {
-  src: string;
-  type?: string;
-}
-
-// 動画はリポジトリに置かず、self-host/CDN の URL を列挙する。差し替えは本ファイル＋再デプロイ。
-// 例（実URLに差し替える）:
-//   { src: 'https://cdn.example.com/signage/intro.mp4', type: 'video/mp4' },
-// 空配列のままだと Stage は背景色のみを表示する。
-export const PLAYLIST: VideoItem[] = [];
+// API（/api/signage/playlist）が主ソース。取得失敗・空配列・ローカル開発時のみ
+// この配列を自前キューに流す（spec §5.4）。動画 URL ではなく YouTube の videoId を列挙する。
+// 例: 'dQw4w9WgXcQ'。空のままなら（API も空なら）idle ロゴ的な背景に倒れる。
+export const FALLBACK_VIDEO_IDS: string[] = [];
 ```
 
-- [ ] **Step 2: Stage（動画は常時マウント・active で再生/停止、unmuted で音声）**
+- [ ] **Step 2: `use-playlist.ts`（API 取得＋フォールバック）**
 
-Create `apps/signage/src/components/stage.tsx`:
+```ts
+'use client';
+
+import type { SignagePlaylistResponse } from '@tecnova/shared/schemas';
+import { apiJson } from '@tecnova/ui/lib/api-client';
+import { useEffect, useState } from 'react';
+import { FALLBACK_VIDEO_IDS } from '@/config/playlist';
+
+// 起動時 + 数分間隔で /api/signage/playlist を取得し videoId[] を保持する。
+// 取得失敗 / 空配列のときは FALLBACK_VIDEO_IDS を採用（spec §5.1 / §5.4）。
+const POLL_MS = 5 * 60_000;
+
+export const usePlaylist = (): string[] => {
+  const [ids, setIds] = useState<string[]>(FALLBACK_VIDEO_IDS);
+
+  useEffect(() => {
+    let active = true;
+    const load = async (): Promise<void> => {
+      try {
+        const res = await apiJson<SignagePlaylistResponse>('/api/signage/playlist');
+        if (!active) return;
+        const next = res.items.map((i) => i.videoId);
+        setIds(next.length > 0 ? next : FALLBACK_VIDEO_IDS);
+      } catch {
+        // 取得失敗時は直近の状態を保持（degrade）。初回失敗なら FALLBACK のまま。
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  return ids;
+};
+```
+
+- [ ] **Step 3: `use-mute.ts`（localStorage 永続・既定=無音）**
+
+```ts
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+
+// 無音/音ありトグル。既定=無音（true）。localStorage に永続（spec §5.5）。
+const STORAGE_KEY = 'signage:muted';
+
+export const useMute = (): { muted: boolean; toggle: () => void } => {
+  // SSR では localStorage が無いので既定=無音で初期化し、mount 後に読み出す。
+  const [muted, setMuted] = useState(true);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(STORAGE_KEY) === 'false') setMuted(false);
+  }, []);
+
+  const toggle = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  return { muted, toggle };
+};
+```
+
+- [ ] **Step 4: `use-youtube-player.ts`（IFrame ライフサイクル＋自前キュー）**
+
+```ts
+'use client';
+
+import { useEffect, useRef } from 'react';
+
+// IFrame Player API は @types/youtube がグローバル名前空間 YT を提供する。
+// window.YT / onYouTubeIframeAPIReady は型に無いので最小限で宣言する。
+declare global {
+  interface Window {
+    YT?: typeof YT;
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+// IFrame Player API を一度だけ読み込むシングルトン。複数回呼んでも <script> は 1 回。
+let apiReadyPromise: Promise<typeof YT> | null = null;
+
+const loadYouTubeApi = (): Promise<typeof YT> => {
+  if (apiReadyPromise) return apiReadyPromise;
+  apiReadyPromise = new Promise((resolve) => {
+    if (window.YT?.Player) {
+      resolve(window.YT);
+      return;
+    }
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      prev?.();
+      resolve(window.YT as typeof YT);
+    };
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+  });
+  return apiReadyPromise;
+};
+
+interface Args {
+  elementId: string;
+  videoIds: string[];
+  active: boolean; // 活動フェーズ中のみ再生
+  muted: boolean; // 無音トグル
+  started: boolean; // 起動タップ後（unMute はジェスチャ後のみ）
+}
+
+// 生成済み iframe を全画面化し、再生中だけ可視にする（未ロード時は背後のロゴを見せる）。
+const styleIframe = (iframe: HTMLIFrameElement, visible: boolean): void => {
+  iframe.style.position = 'absolute';
+  iframe.style.inset = '0';
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.opacity = visible ? '1' : '0';
+};
+
+export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }: Args): void => {
+  const playerRef = useRef<YT.Player | null>(null);
+  const readyRef = useRef(false);
+  const indexRef = useRef(0);
+  const queueStartedRef = useRef(false); // 1本目を流し始めたか
+  // 最新の props を effect 外から参照するための ref。
+  const videoIdsRef = useRef(videoIds);
+  const activeRef = useRef(active);
+  const mutedRef = useRef(muted);
+  const startedRef = useRef(started);
+  videoIdsRef.current = videoIds;
+  activeRef.current = active;
+  mutedRef.current = muted;
+  startedRef.current = started;
+
+  // プレーヤー生成は一度だけ。StrictMode の二重マウントは destroy で吸収する。
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadNext = (): void => {
+      const ids = videoIdsRef.current;
+      const player = playerRef.current;
+      if (!player || ids.length === 0) return;
+      indexRef.current = (indexRef.current + 1) % ids.length;
+      const next = ids[indexRef.current];
+      if (next) player.loadVideoById(next);
+    };
+
+    const applyMute = (player: YT.Player): void => {
+      if (startedRef.current && !mutedRef.current) player.unMute();
+      else player.mute();
+    };
+
+    void loadYouTubeApi().then((YTApi) => {
+      if (cancelled || playerRef.current) return;
+      const first = videoIdsRef.current[0];
+      queueStartedRef.current = first !== undefined;
+      playerRef.current = new YTApi.Player(elementId, {
+        videoId: first,
+        // controls/fs/kb/関連UI を抑止。rel=0 は限定的だが残す。mute:1 でミュート自動再生を保証。
+        playerVars: {
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          playsinline: 1,
+          iv_load_policy: 3,
+          autoplay: 1,
+          mute: 1,
+          rel: 0,
+        },
+        events: {
+          onReady: (e) => {
+            readyRef.current = true;
+            const player = e.target;
+            styleIframe(player.getIframe(), queueStartedRef.current);
+            if (activeRef.current) player.playVideo();
+            else player.pauseVideo();
+            applyMute(player);
+          },
+          // ENDED 直前ではなく ENDED で次へ差し替え。プレーヤーを「終了状態」に長く
+          // 留めないことで関連グリッド/up-next を実質抑止する（spec §5.2）。
+          onStateChange: (e) => {
+            if (e.data === YTApi.PlayerState.ENDED) loadNext();
+          },
+          // 100=削除/非公開, 101/150=埋め込み禁止 → 次へ送ってキューを止めない。
+          onError: () => loadNext(),
+        },
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      playerRef.current?.destroy();
+      playerRef.current = null;
+      readyRef.current = false;
+      queueStartedRef.current = false;
+      indexRef.current = 0;
+    };
+  }, [elementId]);
+
+  // 生成時に空だった場合の救済：プレイリストが初めて埋まったらキュー先頭から再生開始。
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !readyRef.current || queueStartedRef.current) return;
+    const first = videoIds[0];
+    if (first === undefined) return;
+    queueStartedRef.current = true;
+    indexRef.current = 0;
+    player.loadVideoById(first);
+    styleIframe(player.getIframe(), true);
+  }, [videoIds]);
+
+  // 活動フェーズで再生 / それ以外で一時停止。
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !readyRef.current) return;
+    if (active) player.playVideo();
+    else player.pauseVideo();
+  }, [active]);
+
+  // 起動タップ後・音ありモードのときだけ unMute。それ以外はミュート。
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !readyRef.current) return;
+    if (started && !muted) player.unMute();
+    else player.mute();
+  }, [started, muted]);
+};
+```
+
+- [ ] **Step 5: `youtube-player.tsx`（動画レイヤ＝旧 stage.tsx 置換）**
 
 ```tsx
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { PLAYLIST } from '@/config/playlist';
+import { useYoutubePlayer } from '@/lib/use-youtube-player';
+
+const PLAYER_ELEMENT_ID = 'signage-youtube-player';
 
 interface Props {
-  active: boolean; // 活動フェーズ中のみ再生
-  unmuted: boolean; // 起動タップ後に音声ON
+  videoIds: string[];
+  active: boolean;
+  muted: boolean;
+  started: boolean;
 }
 
-export function Stage({ active, unmuted }: Props) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const indexRef = useRef(0);
-
-  // React は muted を DOM に確実に反映しないため ref 経由で設定する。
-  useEffect(() => {
-    const v = ref.current;
-    if (v) v.muted = !unmuted;
-  }, [unmuted]);
-
-  useEffect(() => {
-    const v = ref.current;
-    if (!v) return;
-    if (active) void v.play().catch(() => {});
-    else v.pause();
-  }, [active]);
-
-  const handleEnded = (): void => {
-    const v = ref.current;
-    if (!v || PLAYLIST.length <= 1) return;
-    indexRef.current = (indexRef.current + 1) % PLAYLIST.length;
-    const next = PLAYLIST[indexRef.current];
-    if (!next) return;
-    v.src = next.src;
-    void v.play().catch(() => {});
-  };
-
-  const first = PLAYLIST[0];
+// IFrame は常時マウント（再読込フラッシュ防止）。未ロード時は背後のワードマークを見せ、
+// 動画ロード後に iframe を opacity:1 で前に出す（use-youtube-player が制御）。
+export function YoutubePlayer({ videoIds, active, muted, started }: Props) {
+  useYoutubePlayer({ elementId: PLAYER_ELEMENT_ID, videoIds, active, muted, started });
 
   return (
-    <video
-      ref={ref}
-      className="absolute inset-0 h-full w-full bg-slate-950 object-cover"
-      playsInline
-      autoPlay
-      muted
-      loop={PLAYLIST.length === 1}
-      onEnded={handleEnded}
-      src={first?.src}
-    />
+    <div className="absolute inset-0 overflow-hidden bg-slate-950">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-4xl font-black tracking-wide text-white/10">tec-nova Nagasaki</span>
+      </div>
+      {/* YT.Player がこの div を iframe に置換し、JS 側で全画面化＋可視制御する。 */}
+      <div id={PLAYER_ELEMENT_ID} />
+    </div>
   );
 }
 ```
 
-- [ ] **Step 3: 型チェック**
+- [ ] **Step 6: `mute-toggle.tsx`（運用者向け控えめな小コントロール）**
 
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
+```tsx
+'use client';
 
-- [ ] **Step 4: コミット**
+import { IconVolume, IconVolumeOff } from '@tabler/icons-react';
+
+interface Props {
+  muted: boolean;
+  onToggle: () => void;
+}
+
+export function MuteToggle({ muted, onToggle }: Props) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={muted ? '動画の音声をオンにする' : '動画の音声をオフにする'}
+      className="absolute right-4 bottom-4 z-40 flex size-11 items-center justify-center rounded-full bg-slate-950/50 text-white/70 backdrop-blur transition hover:text-white"
+    >
+      {muted ? <IconVolumeOff className="size-5" /> : <IconVolume className="size-5" />}
+    </button>
+  );
+}
+```
+
+- [ ] **Step 7: 型チェック** — Run: `pnpm --filter signage type-check`（`@types/youtube` の `YT.Player` 等が解決すること）。
+- [ ] **Step 8: コミット**
 
 ```bash
-git add apps/signage/src/config/playlist.ts apps/signage/src/components/stage.tsx
-git commit -m "feat(signage): playlist config and video stage layer"
+git add apps/signage/src/config/playlist.ts apps/signage/src/lib/use-playlist.ts apps/signage/src/lib/use-mute.ts apps/signage/src/lib/use-youtube-player.ts apps/signage/src/components/youtube-player.tsx apps/signage/src/components/mute-toggle.tsx
+git commit -m "feat(signage): YouTube IFrame self-queue player, playlist fetch, mute toggle"
 ```
 
 ---
 
-## Task 10: 表示コンポーネント（info-bar / break-screen / idle-screen / tap-to-start）
+## Task 11: 表示コンポーネント（info-bar / break-screen / idle-screen / tap-to-start）
 
-**Files:**
-- Create: `apps/signage/src/components/info-bar.tsx`
-- Create: `apps/signage/src/components/break-screen.tsx`
-- Create: `apps/signage/src/components/idle-screen.tsx`
-- Create: `apps/signage/src/components/tap-to-start.tsx`
+**Files:** Create `apps/signage/src/components/{info-bar,break-screen,idle-screen,tap-to-start}.tsx`
 
 - [ ] **Step 1: InfoBar（活動中の上部バー）**
-
-Create `apps/signage/src/components/info-bar.tsx`:
 
 ```tsx
 'use client';
@@ -1230,8 +1478,6 @@ export function InfoBar({ term, now, present, secondsToBreak }: Props) {
 
 - [ ] **Step 2: BreakScreen（休憩中・カウントダウン主役、クロスフェード）**
 
-Create `apps/signage/src/components/break-screen.tsx`:
-
 ```tsx
 'use client';
 
@@ -1243,8 +1489,8 @@ interface Props {
   present: number;
 }
 
-// 動画レイヤの上に重ね、opacity でクロスフェード。動画は裏で再生継続（再読込フラッシュ防止）。
-// prefers-reduced-motion 時は globals 側のトランジション無効化に委ねつつ、ここでも duration を短縮。
+// 動画レイヤの上に重ね、opacity でクロスフェード。動画は裏で pause（YouTube iframe は
+// アンマウントしない＝再読込フラッシュ防止）。prefers-reduced-motion 時は transition を無効化。
 export function BreakScreen({ show, secondsToResume, present }: Props) {
   return (
     <div
@@ -1266,8 +1512,6 @@ export function BreakScreen({ show, secondsToResume, present }: Props) {
 ```
 
 - [ ] **Step 3: IdleScreen（待機・営業時間外／稼働前）**
-
-Create `apps/signage/src/components/idle-screen.tsx`:
 
 ```tsx
 'use client';
@@ -1292,11 +1536,7 @@ export function IdleScreen({ show, soon, now, nextStartAt, present }: Props) {
       <p className="text-5xl font-black tracking-wide">tec-nova Nagasaki</p>
       <p className="text-6xl font-extrabold tabular-nums">{jstHm(now)}</p>
       <p className="text-2xl text-slate-300">
-        {soon
-          ? 'まもなく開始'
-          : nextStartAt
-            ? `次は ${jstHm(nextStartAt)} から`
-            : '本日は終了しました'}
+        {soon ? 'まもなく開始' : nextStartAt ? `次は ${jstHm(nextStartAt)} から` : '本日は終了しました'}
       </p>
       {present > 0 && <p className="text-lg text-slate-400">在館 {present} 人</p>}
     </div>
@@ -1305,8 +1545,6 @@ export function IdleScreen({ show, soon, now, nextStartAt, present }: Props) {
 ```
 
 - [ ] **Step 4: TapToStart（音声解放ゲート）**
-
-Create `apps/signage/src/components/tap-to-start.tsx`:
 
 ```tsx
 'use client';
@@ -1324,34 +1562,26 @@ export function TapToStart({ onStart }: Props) {
     >
       <span className="text-6xl">▶</span>
       <span className="text-3xl font-extrabold">タップして開始</span>
-      <span className="text-base text-slate-400">音声と全画面表示を有効にします</span>
+      <span className="text-base text-slate-400">チャイム・全画面表示を有効にします</span>
     </button>
   );
 }
 ```
 
-- [ ] **Step 5: 型チェック**
-
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
-
-- [ ] **Step 6: コミット**
+- [ ] **Step 5: 型チェック** → **Step 6: コミット**
 
 ```bash
-git add apps/signage/src/components
+git add apps/signage/src/components/info-bar.tsx apps/signage/src/components/break-screen.tsx apps/signage/src/components/idle-screen.tsx apps/signage/src/components/tap-to-start.tsx
 git commit -m "feat(signage): info-bar, break/idle screens, tap-to-start overlay"
 ```
 
 ---
 
-## Task 11: 状態機械の結線 `page.tsx`
+## Task 12: 状態機械の結線 `page.tsx`
 
-**Files:**
-- Modify: `apps/signage/src/app/page.tsx`
+**Files:** Modify `apps/signage/src/app/page.tsx`
 
 - [ ] **Step 1: 本体を実装（暫定プレースホルダを置き換え）**
-
-Replace `apps/signage/src/app/page.tsx` の全内容:
 
 ```tsx
 'use client';
@@ -1365,12 +1595,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { BreakScreen } from '@/components/break-screen';
 import { IdleScreen } from '@/components/idle-screen';
 import { InfoBar } from '@/components/info-bar';
-import { Stage } from '@/components/stage';
+import { MuteToggle } from '@/components/mute-toggle';
 import { TapToStart } from '@/components/tap-to-start';
+import { YoutubePlayer } from '@/components/youtube-player';
 import { ensureAudioRunning, playChime, resumeAudio } from '@/lib/chimes';
 import { getNow } from '@/lib/now';
 import { useChimeScheduler } from '@/lib/use-chime-scheduler';
+import { useMute } from '@/lib/use-mute';
 import { useNow } from '@/lib/use-now';
+import { usePlaylist } from '@/lib/use-playlist';
 import { useSignageData } from '@/lib/use-signage-data';
 import { useWakeLock } from '@/lib/use-wake-lock';
 
@@ -1378,6 +1611,8 @@ export default function SignagePage() {
   const [started, setStarted] = useState(false);
   const now = useNow(1000);
   const data = useSignageData();
+  const videoIds = usePlaylist();
+  const { muted, toggle } = useMute();
   const moment = classifyCycleMoment(now);
 
   const isTermActive = useCallback(
@@ -1425,13 +1660,19 @@ export default function SignagePage() {
   // idle の理由を区別：ターム内・未稼働なら「まもなく開始」、ターム外なら次タームの開始時刻。
   const inUnstartedTerm = moment.term !== null && !active;
   // 次の活動開始（次境界＝次タームの resume）はターム外のときだけ算出する
-  // （ターム内・未稼働で算出すると次境界が break になり「次は HH:MM から」が誤表示になるため）。
+  // （ターム内・未稼働で算出すると次境界が break になり「次は HH:MM から」が誤表示になる）。
   const msNext = moment.term === null ? msUntilNextBoundary(now) : null;
   const nextStartAt = msNext === null ? null : new Date(now.getTime() + msNext);
 
   return (
     <main className="relative h-svh w-screen overflow-hidden bg-slate-950 text-white">
-      <Stage active={started && phase === 'activity'} unmuted={started} />
+      {/* 動画は活動フェーズで再生。起動タップ前でもミュート自動再生で映像は出る（spec §6）。 */}
+      <YoutubePlayer
+        videoIds={videoIds}
+        active={phase === 'activity'}
+        muted={muted}
+        started={started}
+      />
 
       {phase === 'activity' && moment.term && (
         <InfoBar
@@ -1456,53 +1697,43 @@ export default function SignagePage() {
         present={data.currentlyPresent}
       />
 
+      {/* 無音トグルは起動後のみ表示（運用者向け）。既定は無音。 */}
+      {started && <MuteToggle muted={muted} onToggle={toggle} />}
+
       {!started && <TapToStart onStart={handleStart} />}
     </main>
   );
 }
 ```
 
-- [ ] **Step 2: 型チェック**
+- [ ] **Step 2: 型チェック** — Run: `pnpm --filter signage type-check`。
 
-Run: `pnpm --filter signage type-check`
-Expected: エラーなし。
+- [ ] **Step 3: 手動 E2E（時刻上書きで全状態を確認）** — `pnpm --filter signage dev` ＋ api 起動 ＋ ログイン済み。`?now=` で擬似時刻、ローカル D1 に当日セッションを1件入れて稼働させる：
+  - `?now=2026-05-30T09:30:00` → 「タップして開始」→ 当該タームに当日チェックインがあれば activity（YouTube動画＋情報バー「休憩まで …」）。無ければ idle「**まもなく開始**」。
+  - `?now=2026-05-30T09:49:50` → 数秒後に :50 → break 画面にクロスフェード＋休憩チャイム。
+  - `?now=2026-05-30T09:59:50` → :00 で activity に戻り再開チャイム。動画が**自前キューで次へ即差し替え**（関連動画/終了画面が出ない）こと、`prefers-reduced-motion` でトランジション縮約を確認。
+  - `?now=2026-05-30T12:30:00` → idle（「次は 13:00 から」）。
 
-- [ ] **Step 3: 手動 E2E（時刻上書きで全状態を確認）**
+- [ ] **Step 4: 無音トグル** — 既定が無音（`mute:1`・映像のみ）、トグルで音あり↔無音が切替わり localStorage 永続、音ありは起動タップ後に `unMute()` で鳴ること、無音でもチャイムが鳴ることを確認。
 
-Run: `pnpm --filter signage dev` ＋ api 起動 ＋ ログイン済み。
-確認（`?now=` で擬似時刻、ローカル D1 に当日セッションを1件入れて稼働させる）:
-- `http://localhost:3002/?now=2026-05-30T09:30:00` → 「タップして開始」→ 当該タームに当日チェックインがあれば activity（動画＋情報バー「休憩まで …」）。チェックインが無ければ idle で「**まもなく開始**」（「次は …から」ではない）になることを確認。
-- `?now=2026-05-30T09:49:50` → 数秒後に :50 へ → break 画面にクロスフェード＋休憩チャイム。
-- `?now=2026-05-30T09:59:50` → :00 で activity に戻り再開チャイム。
-- `?now=2026-05-30T12:30:00` → idle（「次は 13:00 から」）。
-- OS/ブラウザの reduce-motion をON → クロスフェードが瞬時切替になることを確認。
-Expected: 各状態遷移とチャイムが設計通り。
+- [ ] **Step 5: 全体型チェック＆Lint** — `pnpm type-check` / `pnpm biome check .`（必要なら `--write`）。
 
-- [ ] **Step 4: 全体型チェック＆Lint**
-
-Run: `pnpm type-check`
-Run: `pnpm biome check .`
-Expected: いずれもエラーなし（必要なら `pnpm biome check --write .` で整形）。
-
-- [ ] **Step 5: コミット**
+- [ ] **Step 6: コミット**
 
 ```bash
 git add apps/signage/src/app/page.tsx
-git commit -m "feat(signage): wire phase state machine (video/break/idle + chimes)"
+git commit -m "feat(signage): wire phase state machine (YouTube/break/idle + chimes + mute)"
 ```
 
 ---
 
-## Task 12: ドキュメント（アプリ docs ＋ architecture 追記）
+## Task 13: ドキュメント（アプリ docs ＋ architecture 追記）
 
 **Files:**
-- Create: `apps/signage/AGENTS.md`
-- Create: `apps/signage/CLAUDE.md`
+- Create: `apps/signage/AGENTS.md` / `apps/signage/CLAUDE.md`
 - Modify: `docs/architecture.md`
 
-- [ ] **Step 1: `AGENTS.md`（checkin と同一）**
-
-Create `apps/signage/AGENTS.md`:
+- [ ] **Step 1: `AGENTS.md`**（checkin と同一）
 
 ```markdown
 # This is NOT the Next.js you know
@@ -1512,8 +1743,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 - [ ] **Step 2: `CLAUDE.md`**
 
-Create `apps/signage/CLAUDE.md`:
-
 ```markdown
 @AGENTS.md
 
@@ -1522,23 +1751,18 @@ Create `apps/signage/CLAUDE.md`:
 - **Next.js 16 / React 19**。App Router の API がトレーニングデータと乖離しているため、実装前に `node_modules/next/dist/docs/` を確認すること。
 - **dev ポート**: `3002`（`next dev --port 3002`）。api は `8787`、checkin は `3000`、admin は `3001`。
 - **認証あり**: checkin/admin と同じメンター・ホワイトリスト（`MeProvider`/`auth-client`）。運用は**テクノバ共有の管理用 Google アカウント**で1回ログイン（セッション既定7日）。`useMe` はツリー内に `MeProvider` 必須。
-- **データ**: 認証付き `GET /api/sessions/today` を再利用（新規エンドポイントなし）。ターム別チェックイン数は `sessions[].term` から算出し、**現タームに当日チェックインが入った時点で稼働開始**（ターム終了まで sticky）。
+- **データ**: 認証付き `GET /api/sessions/today` を再利用（稼働判定・在館数）。ターム別チェックイン数は `sessions[].term` から算出し、**現タームに当日チェックインが入った時点で稼働開始**（ターム終了まで sticky）。
 - **時刻ロジック**: `@tecnova/shared/activity-cycle`（50分活動/10分休憩・チャイム時刻）。表示の時刻上書きは `?now=ISO`（手動検証用）。
-- **動画**: `src/config/playlist.ts` に URL を列挙（リポジトリにバイナリを置かない）。
-- **キオスク**: 横向き・フルスクリーン。起動時「タップして開始」で音声/全画面/wake lock を解放（ブラウザの自動再生制約）。本番は Chromium を `--kiosk` 等で起動。
-- **必須 env**: `NEXT_PUBLIC_API_URL`（未設定時 `http://localhost:8787`）。API 側 `TRUSTED_ORIGINS` にサイネージ origin（dev: `http://localhost:3002`、本番ドメイン）を登録すること。
+- **動画**: YouTube IFrame Player API の自前キュー。再生順は YouTube のプレイリストを `GET /api/signage/playlist`（YouTube Data API・Worker キャッシュ）が videoId 列にして返す。フォールバックは `src/config/playlist.ts` の `FALLBACK_VIDEO_IDS`。**広告は埋め込み側で消せない**（spec §5.3）。
+- **音声**: 無音/音ありのグローバルトグルのみ（既定=無音・localStorage）。BGM は **OS側 Spotify**（アプリ非統合）。チャイムは Web Audio 合成で独立。
+- **キオスク**: 横向き・フルスクリーン。起動「タップして開始」で**チャイム解放・全画面・wake lock**（＋音ありモード時のみ動画 unMute）。ミュート動画はタップ前から再生。本番は Chromium を `--kiosk` 等で起動。
+- **必須 env**: `NEXT_PUBLIC_API_URL`（未設定時 `http://localhost:8787`）。API 側 `TRUSTED_ORIGINS` にサイネージ origin（dev: `http://localhost:3002`、本番ドメイン）と `YOUTUBE_API_KEY`/`YOUTUBE_PLAYLIST_ID` を登録すること。
 - 新しい `@tecnova/*` パッケージを使うときは `next.config.ts` の `transpilePackages` に追加。
 ```
 
-- [ ] **Step 3: `docs/architecture.md` にサイネージを追記**
+- [ ] **Step 3: `docs/architecture.md` にサイネージを追記** — クライアント一覧に `apps/signage`（会場サイネージ・大型モニター・メンター認証・`/api/sessions/today` 再利用・`activity-cycle` 連動・YouTube 動画レイヤ）を既存記法で1行追加。拡張ロードマップ側にも一文（サイネージ＝Phase 拡張で追加、機微コンテンツは同じ認証配下の `/api/signage/*` で拡張予定）。
 
-`docs/architecture.md` のフロントエンドアプリ一覧（`apps checkin` / `apps admin` などが並ぶ箇所）に、認証ありの新規アプリとして `apps signage`（会場サイネージ・大型モニター・メンター認証・`/api/sessions/today` 再利用・`activity-cycle` 連動）を、既存エントリと同じ記法で1行追加する。拡張ロードマップ側にも一文（サイネージ＝Phase 拡張で追加、機微コンテンツは同じ認証配下で拡張予定）を加える。
-
-- [ ] **Step 4: Lint**
-
-Run: `pnpm biome check .`
-Expected: エラーなし。
-
+- [ ] **Step 4: Lint** — `pnpm biome check .`。
 - [ ] **Step 5: コミット**
 
 ```bash
@@ -1553,15 +1777,16 @@ git commit -m "docs(signage): add app CLAUDE.md/AGENTS.md and architecture entry
 1. `pnpm --filter @tecnova/shared test` … activity-cycle の単体テスト green。
 2. `pnpm type-check` … 全 workspace 型エラーなし。
 3. `pnpm biome check .` … lint/format クリーン。
-4. `pnpm dev` 後、`http://localhost:3002` で：未ログイン→/login→共有アカウントでログイン→「タップして開始」→ `?now=` で activity/break/idle 遷移とチャイムを確認。
-5. 実機キオスク：音付き動画・wake lock・全画面、タブ復帰で音声復帰、セッション維持（再読込でログイン不要）を確認。
+4. `pnpm dev` 後、`http://localhost:3002` で：未ログイン→/login→共有アカウントでログイン→「タップして開始」→ `?now=` で activity/break/idle 遷移とチャイム、YouTube 自前キューの差し替え、無音トグルを確認。
+5. 実機キオスク：（音ありモードなら）動画音声・wake lock・全画面、タブ復帰で音声復帰、セッション維持（再読込でログイン不要）を確認。
 
 ## 留意点（spec §9 由来）
 
 - 端末ローカル時計依存（NTP 同期推奨）。
 - セッション既定7日（長期運用は `apps/api/src/lib/auth.ts` に `session.expiresIn` 追加で延長可）。
 - 稼働判定はポーリング間隔（~20秒）分のラグあり。:50 直前の初チェックインは当該休憩チャイムを逃しうる（許容）。
-- v1 は `/api/sessions/today` の PII を画面に出さない。将来の機微コンテンツは同じ認証配下の新エンドポイントで。
-- 起動タップ後の動画 unmute/再生は React effect 経由（タップと同一ジェスチャ内の同期呼び出しではない）。ページの sticky activation ＋ キオスクの autoplay policy で実用上は問題なし。非キオスクの素のブラウザで初回 unmuted 再生がブロックされた場合は Stage の muted フォールバック（`play()` 失敗を握る）に依存する。より厳密にするなら handleStart 内で video へ imperative に `muted=false; play()` してから `setStarted(true)` する。
-```
-
+- v1 は `/api/sessions/today` の PII を画面に出さない。将来の機微コンテンツは同じ認証配下の `/api/signage/*` で。
+- **YouTube 広告は埋め込み側で消せない**（spec §5.3）。広告ゼロを確実にできるのは YPP 加入チャンネルで収益化オフにした自前動画のみ。プログラム的スキップは ToS 違反。
+- **作者エンドスクリーン（カード）**は末尾数秒に重なるため自前キューのサブ秒差し替えでは完全には消えない（spec §5.2・許容）。必要なら末尾数秒手前で切る拡張余地あり。
+- **空プレイリスト**（API も `FALLBACK_VIDEO_IDS` も空）の活動フェーズでは、動画レイヤ背後の「tec-nova Nagasaki」ワードマークが見える（黒画面回避）。実運用ではプレイリスト or フォールバックを必ず設定する。
+- 起動タップ後の動画 unMute は React effect 経由（タップと同一同期ジェスチャ内ではない）。ページの sticky activation ＋ キオスクの autoplay policy で実用上問題なし。既定の無音モードなら unMute 自体が不要。
