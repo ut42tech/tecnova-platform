@@ -7,14 +7,20 @@
     ".": "./src/index.ts",
     "./google-sheets": "./src/google-sheets.ts",
     "./schemas": "./src/schemas/index.ts",
-    "./venue-schedule": "./src/venue-schedule.ts"
+    "./venue-schedule": "./src/venue-schedule.ts",
+    "./activity-cycle": "./src/activity-cycle.ts",
+    "./attendance-level": "./src/attendance-level.ts",
+    "./visit-summary": "./src/visit-summary.ts",
+    "./youtube": "./src/youtube.ts"
   },
   "scripts": {
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260502.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "zod": "^4.4.2"

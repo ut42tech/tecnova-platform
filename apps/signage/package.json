@@ -1,0 +1,31 @@
+{
+  "name": "signage",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3002",
+    "build": "next build",
+    "start": "next start",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.42.0",
+    "@tecnova/shared": "workspace:*",
+    "@tecnova/ui": "workspace:*",
+    "better-auth": "^1.6.9",
+    "motion": "^12.40.0",
+    "next": "16.2.4",
+    "qrcode.react": "^4.2.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/youtube": "^0.1.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

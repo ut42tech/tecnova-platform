@@ -30,11 +30,13 @@ flowchart LR
   subgraph devices["Operation Devices"]
     ipad["Reception iPad"]
     pc["Admin PC"]
+    monitor["Venue Large Monitor"]
   end
 
   subgraph frontend["Vercel Frontend"]
     checkin["Checkin PWA<br/>Next.js 16 / React 19<br/>ZXing QR Scan"]
     admin["Admin Dashboard<br/>Next.js 16 / React 19"]
+    signage["Signage Display<br/>Next.js 16 / React 19<br/>YouTube IFrame + Chime"]
     ui["Shared UI<br/>shadcn/ui / Tailwind CSS<br/>apiFetch / MeProvider"]
   end
 
@@ -67,10 +69,13 @@ flowchart LR
 
   ipad --> checkin
   pc --> admin
+  monitor --> signage
   checkin --> ui
   admin --> ui
+  signage --> ui
   checkin --> hono
   admin --> hono
+  signage --> hono
 
   hono --> betterAuth
   betterAuth --> oauth
@@ -88,11 +93,13 @@ flowchart LR
 
   workspace --> checkin
   workspace --> admin
+  workspace --> signage
   workspace --> hono
   workspace --> d1
   ci --> deploy
   deploy --> checkin
   deploy --> admin
+  deploy --> signage
   deploy --> hono
   deploy --> d1
 
@@ -103,8 +110,8 @@ flowchart LR
   classDef external fill:#fefce8,stroke:#ca8a04,color:#0f172a;
   classDef ops fill:#f5f3ff,stroke:#7c3aed,color:#0f172a;
 
-  class ipad,pc device;
-  class checkin,admin,ui frontend;
+  class ipad,pc,monitor device;
+  class checkin,admin,signage,ui frontend;
   class hono,betterAuth backend;
   class d1,participants,events,sessions,mentors,authTables db;
   class oauth,sheets,gas,drive external;
@@ -119,12 +126,14 @@ architecture-beta
   service child_kiosk(server)[Child And Reception iPad] in people
   service mentor_phone(server)[Mentor Smartphone Future] in people
   service admin_pc(server)[Admin PC Browser] in people
+  service signage_monitor(server)[Venue Large Monitor Current] in people
   service researcher_pc(server)[Researcher Analysis PC Future] in people
   service parent_browser(server)[Parent Browser Future] in people
 
   group frontend(cloud)[Vercel Frontend Apps]
   service checkin_app(server)[apps checkin Next PWA Current] in frontend
   service admin_app(server)[apps admin Next Web Current] in frontend
+  service signage_app(server)[apps signage Next Display Current] in frontend
   service mentor_app(server)[apps mentor Next PWA Future] in frontend
   service analytics_app(server)[Analytics Dashboard Future] in frontend
   service parent_app(server)[Parent View Future] in frontend
@@ -188,11 +197,13 @@ architecture-beta
   child_kiosk:R --> L:checkin_app
   mentor_phone:R --> L:mentor_app
   admin_pc:R --> L:admin_app
+  signage_monitor:R --> L:signage_app
   researcher_pc:R --> L:analytics_app
   parent_browser:R --> L:parent_app
 
   checkin_app:R --> L:worker
   admin_app:R --> L:worker
+  signage_app:R --> L:worker
   mentor_app:R --> L:worker
   analytics_app:R --> L:worker
   parent_app:R --> L:public_api
@@ -254,6 +265,7 @@ architecture-beta
   deploy_api:B --> T:migrations
   vercel_deploy:R --> L:checkin_app
   vercel_deploy:R --> L:admin_app
+  vercel_deploy:R --> L:signage_app
   vercel_deploy:R --> L:mentor_app
   secrets:T --> B:worker
   secrets:T --> B:checkin_app
@@ -270,6 +282,15 @@ architecture-beta
   MVP documentation.
 - `/api/*` and `/checkin/*` both pass through Better Auth and the `mentors`
   allowlist. Planned `/public/v1/*` traffic is separated behind API key auth.
+- `apps signage` is a venue large-monitor display that runs under the same
+  mentor allowlist (a shared admin Google account logs in once). It reuses the
+  authenticated `GET /api/sessions/today` for crowd/activity signals and adds a
+  single new endpoint, `GET /api/signage/playlist` (YouTube Data API, server-side
+  cached), for the ordered video queue. The 50-minute activity / 10-minute break
+  cadence and chime timings come from `@tecnova/shared/activity-cycle`. Future
+  sensitive content (nicknames, mentor intro slides) stays behind the same
+  allowlist under `/api/signage/*`; video BGM is handled OS-side (Spotify), not
+  by the app.
 - The private teacher-managed sheet remains outside the in-house database. The
   platform reads and writes only the student-facing sheet columns required for
   operations.

@@ -9,6 +9,9 @@ export type Bindings = {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   TRUSTED_ORIGINS: string;
+  // サイネージの動画プレイリスト取得（YouTube Data API v3・APIキーのみ）。
+  YOUTUBE_API_KEY: string;
+  YOUTUBE_PLAYLIST_ID: string;
 };
 
 export interface AuthUser {
