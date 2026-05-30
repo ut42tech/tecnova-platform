@@ -7,6 +7,7 @@ import { authRoute } from './routes/auth';
 import { checkinRoute } from './routes/checkin';
 import { healthRoute } from './routes/health';
 import { preRegistrationsRoute } from './routes/pre-registrations';
+import { signageRoute } from './routes/signage';
 import type { AppEnv } from './types';
 
 const app = new Hono<AppEnv>();
@@ -26,6 +27,7 @@ app.use('/checkin/*', requireAuthenticatedMentor);
 
 app.route('/api', adminRoute);
 app.route('/api/pre-registrations', preRegistrationsRoute);
+app.route('/api/signage', signageRoute);
 app.route('/checkin', checkinRoute);
 app.route('/', healthRoute);
 
