@@ -38,7 +38,7 @@ export function IdleOverlay({
       </p>
       {present > 0 && (
         <p className="text-[clamp(0.95rem,1.6vw,1.4rem)] text-slate-400">
-          いま <span className="font-black text-slate-700">{present}</span> 人が さんかちゅう
+          いま <span className="font-black text-slate-700">{present}</span> 人が あそびちゅう
         </p>
       )}
     </div>

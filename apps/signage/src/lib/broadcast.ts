@@ -25,7 +25,7 @@ export const AIR_STATUS_META: Record<
   { label: string; dot: string; chip: string; pulse: boolean }
 > = {
   live: {
-    label: 'オンエア',
+    label: '活動中',
     dot: 'bg-emerald-500',
     chip: 'bg-emerald-100 text-emerald-700',
     pulse: true,
@@ -46,28 +46,13 @@ export const AIR_STATUS_META: Record<
   },
 };
 
-// にぎわいレベルごとの見た目。fill=メーターの満たし割合（0..1）。
+// にぎわいレベルごとの見た目。実際のメーター長は occupancyRatio(present)（上限25人）で出す。
 export const ATTENDANCE_META: Record<
   AttendanceLevel,
-  { label: string; chip: string; bar: string; fill: number }
+  { label: string; chip: string; bar: string }
 > = {
-  quiet: {
-    label: 'ゆったり',
-    chip: 'bg-slate-100 text-slate-600',
-    bar: 'bg-slate-400',
-    fill: 0.25,
-  },
-  steady: { label: 'ほどよい', chip: 'bg-sky-100 text-sky-700', bar: 'bg-sky-500', fill: 0.5 },
-  lively: {
-    label: 'にぎやか',
-    chip: 'bg-emerald-100 text-emerald-700',
-    bar: 'bg-emerald-500',
-    fill: 0.75,
-  },
-  crowded: {
-    label: '大にぎわい',
-    chip: 'bg-amber-100 text-amber-800',
-    bar: 'bg-amber-500',
-    fill: 1,
-  },
+  quiet: { label: 'ゆったり', chip: 'bg-slate-100 text-slate-600', bar: 'bg-slate-400' },
+  steady: { label: 'ほどよい', chip: 'bg-sky-100 text-sky-700', bar: 'bg-sky-500' },
+  lively: { label: 'にぎやか', chip: 'bg-emerald-100 text-emerald-700', bar: 'bg-emerald-500' },
+  crowded: { label: '大にぎわい', chip: 'bg-amber-100 text-amber-800', bar: 'bg-amber-500' },
 };

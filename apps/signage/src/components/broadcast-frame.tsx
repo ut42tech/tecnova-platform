@@ -6,6 +6,7 @@ import { airStatus } from '@/lib/broadcast';
 import type { SignageData } from '@/lib/use-signage-data';
 import { ChimeRail } from './chime-rail';
 import { InfoTicker } from './info-ticker';
+import { Reveal } from './reveal';
 import { StageHeader } from './stage-header';
 import { VideoStage } from './video-stage';
 
@@ -46,9 +47,14 @@ export function BroadcastFrame({
   const status = airStatus({ phase, soon, hasNext: nextStartAt !== null });
   return (
     <div className="grid h-full w-full grid-rows-[auto_1fr_auto] gap-[clamp(0.75rem,1.6vh,1.5rem)] bg-gradient-to-b from-sky-50 to-white p-[clamp(1rem,2vw,2rem)]">
-      <StageHeader now={now} status={status} />
+      <Reveal index={0}>
+        <StageHeader now={now} status={status} />
+      </Reveal>
 
-      <div className="grid min-h-0 grid-cols-[1fr_clamp(18rem,24vw,28rem)] gap-[clamp(0.75rem,1.6vw,1.5rem)]">
+      <Reveal
+        index={1}
+        className="grid min-h-0 grid-cols-[1fr_clamp(18rem,24vw,28rem)] gap-[clamp(0.75rem,1.6vw,1.5rem)]"
+      >
         <VideoStage
           phase={phase}
           videoIds={videoIds}
@@ -63,14 +69,16 @@ export function BroadcastFrame({
           present={data.currentlyPresent}
         />
         <ChimeRail phase={phase} moment={moment} now={now} soon={soon} nextStartAt={nextStartAt} />
-      </div>
+      </Reveal>
 
-      <InfoTicker
-        currentTrack={currentTrack}
-        present={data.currentlyPresent}
-        totalCheckedIn={data.totalCheckedIn}
-        debug={debug}
-      />
+      <Reveal index={2}>
+        <InfoTicker
+          currentTrack={currentTrack}
+          present={data.currentlyPresent}
+          totalCheckedIn={data.totalCheckedIn}
+          debug={debug}
+        />
+      </Reveal>
     </div>
   );
 }

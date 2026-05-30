@@ -4,7 +4,7 @@ import { cn } from '@tecnova/ui/lib/utils';
 import { motion, useReducedMotion } from 'motion/react';
 import { AIR_STATUS_META, type AirStatus } from '@/lib/broadcast';
 
-// ステータスを示すピル。オンエア/休憩/まもなくは点を脈動させる（reduced-motion 時は静止）。
+// ステータスを示すピル。活動中/休憩/まもなくは点を脈動させる（reduced-motion 時は静止）。
 export function LiveBadge({ status, className }: { status: AirStatus; className?: string }) {
   const reduced = useReducedMotion();
   const meta = AIR_STATUS_META[status];
