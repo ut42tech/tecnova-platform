@@ -1,6 +1,6 @@
 'use client';
 
-import { mmss } from '@/lib/time';
+import { AnimatedTime } from './animated-time';
 
 // 休憩中に動画パネルへ重ねる明るいスライド（配信の「休憩カード」）。
 export function BreakOverlay({
@@ -16,15 +16,16 @@ export function BreakOverlay({
         休憩中
       </span>
       <p className="text-[clamp(0.95rem,1.6vw,1.5rem)] font-bold text-slate-500">つぎの活動まで</p>
-      <p className="text-[clamp(4rem,13vw,10rem)] font-black leading-none text-slate-900 tabular-nums">
-        {secondsToResume !== null ? mmss(secondsToResume) : '--:--'}
-      </p>
+      <AnimatedTime
+        value={secondsToResume}
+        className="text-[clamp(4rem,13vw,10rem)] font-black leading-none text-slate-900"
+      />
       <p className="text-[clamp(1rem,2vw,1.6rem)] font-bold text-slate-500">
         すこし やすんで、また あそぼう！
       </p>
       {present > 0 && (
         <p className="text-[clamp(0.9rem,1.5vw,1.25rem)] text-slate-400">
-          いま <span className="font-black text-slate-700">{present}</span> 人が さんかちゅう
+          いま <span className="font-black text-slate-700">{present}</span> 人が あそびちゅう
         </p>
       )}
     </div>

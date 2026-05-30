@@ -2,6 +2,7 @@
 
 import { cn } from '@tecnova/ui/lib/utils';
 import { mmss } from '@/lib/time';
+import { AnimatedTime } from './animated-time';
 
 type Tone = 'emerald' | 'amber' | 'sky';
 
@@ -31,7 +32,7 @@ export function CountdownRing({ remaining, total, label, targetLabel, tone }: Pr
       <div className="relative grid place-items-center">
         <svg
           viewBox="0 0 100 100"
-          className="size-[clamp(7.5rem,15vw,12rem)] -rotate-90"
+          className="size-[clamp(6rem,13vw,12rem)] -rotate-90"
           role="img"
           aria-label={remaining === null ? label : `${label} ${mmss(remaining)}`}
         >
@@ -58,9 +59,10 @@ export function CountdownRing({ remaining, total, label, targetLabel, tone }: Pr
             )}
           />
         </svg>
-        <span className="absolute text-[clamp(1.75rem,3.4vw,3rem)] font-black leading-none text-slate-900 tabular-nums">
-          {remaining === null ? '--:--' : mmss(remaining)}
-        </span>
+        <AnimatedTime
+          value={remaining}
+          className="absolute text-[clamp(1.75rem,3.4vw,3rem)] font-black leading-none text-slate-900"
+        />
       </div>
       {targetLabel && (
         <p className="text-[clamp(0.75rem,1.1vw,0.95rem)] text-slate-500">{targetLabel}</p>
