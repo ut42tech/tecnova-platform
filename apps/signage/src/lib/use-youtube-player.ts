@@ -25,7 +25,8 @@ const loadYouTubeApi = (): Promise<typeof YT> => {
     const prev = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
       prev?.();
-      resolve(window.YT as typeof YT);
+      // IFrame API はこのコールバック時点で window.YT を設定済みにする。
+      if (window.YT) resolve(window.YT);
     };
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
@@ -108,6 +109,14 @@ export const useYoutubePlayer = ({ elementId, videoIds, active, muted, started }
           onReady: (e) => {
             readyRef.current = true;
             const player = e.target;
+            // 生成後〜onReady の間にプレイリストが届いていたら、ここで1本目を流す
+            // （生成時に空で queueStartedRef=false のまま onReady を迎えたケースの救済。
+            // readyRef がまだ false のため videoIds 変化時の救済 effect は素通りしている）。
+            if (!queueStartedRef.current && videoIdsRef.current.length > 0) {
+              queueStartedRef.current = true;
+              indexRef.current = 0;
+              player.loadVideoById(videoIdsRef.current[0]);
+            }
             styleIframe(player.getIframe(), queueStartedRef.current);
             if (activeRef.current) player.playVideo();
             else player.pauseVideo();

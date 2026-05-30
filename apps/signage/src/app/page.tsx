@@ -29,10 +29,9 @@ export default function SignagePage() {
   const { muted, toggle } = useMute();
   const moment = classifyCycleMoment(now);
 
-  const isTermActive = useCallback(
-    (term: 'morning' | 'afternoon' | 'evening') => data.termCounts[term] > 0,
-    [data.termCounts],
-  );
+  // termCounts は毎ポーリングで作り直されるため useCallback による安定化は無意味
+  // （スケジューラ側も毎 tick で ref に取り直す）。素の関数で十分。
+  const isTermActive = (term: 'morning' | 'afternoon' | 'evening') => data.termCounts[term] > 0;
 
   // 現タームが稼働中（初回チェックイン済み）なら moment.phase、未稼働/ターム外は idle。
   const active = moment.term !== null && isTermActive(moment.term);

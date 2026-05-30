@@ -1,3 +1,4 @@
+import type { SignagePlaylistResponse } from '@tecnova/shared/schemas';
 import { fetchPlaylistVideos, type YouTubePlaylistVideo } from '@tecnova/shared/youtube';
 import type { Bindings } from '../types';
 
@@ -7,12 +8,7 @@ const CACHE_TTL_MS = 5 * 60_000;
 
 let cache: { items: YouTubePlaylistVideo[]; expiresAt: number } | null = null;
 
-export interface SignagePlaylist {
-  items: YouTubePlaylistVideo[];
-  refreshAt: string;
-}
-
-export const fetchSignagePlaylist = async (env: Bindings): Promise<SignagePlaylist> => {
+export const fetchSignagePlaylist = async (env: Bindings): Promise<SignagePlaylistResponse> => {
   const now = Date.now();
   if (!cache || cache.expiresAt <= now) {
     const items = await fetchPlaylistVideos(env.YOUTUBE_API_KEY, env.YOUTUBE_PLAYLIST_ID);
