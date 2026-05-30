@@ -10,6 +10,7 @@
     "./venue-schedule": "./src/venue-schedule.ts",
     "./activity-cycle": "./src/activity-cycle.ts",
     "./attendance-level": "./src/attendance-level.ts",
+    "./visit-summary": "./src/visit-summary.ts",
     "./youtube": "./src/youtube.ts"
   },
   "scripts": {
