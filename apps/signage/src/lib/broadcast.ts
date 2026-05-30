@@ -19,31 +19,13 @@ export const airStatus = ({
   return hasNext ? 'standby' : 'ended';
 };
 
-// ステータスごとの見た目。dot=点の色 / chip=ピル / pulse=点を脈動させるか。
-export const AIR_STATUS_META: Record<
-  AirStatus,
-  { label: string; dot: string; chip: string; pulse: boolean }
-> = {
-  live: {
-    label: '活動中',
-    dot: 'bg-emerald-500',
-    chip: 'bg-emerald-100 text-emerald-700',
-    pulse: true,
-  },
-  break: { label: '休憩中', dot: 'bg-amber-500', chip: 'bg-amber-100 text-amber-800', pulse: true },
-  soon: { label: 'まもなく開始', dot: 'bg-sky-500', chip: 'bg-sky-100 text-sky-700', pulse: true },
-  standby: {
-    label: '準備中',
-    dot: 'bg-slate-400',
-    chip: 'bg-slate-100 text-slate-600',
-    pulse: false,
-  },
-  ended: {
-    label: '本日終了',
-    dot: 'bg-slate-400',
-    chip: 'bg-slate-100 text-slate-600',
-    pulse: false,
-  },
+// ステータスごとの見た目。dot=点の色 / chip=ピル。
+export const AIR_STATUS_META: Record<AirStatus, { label: string; dot: string; chip: string }> = {
+  live: { label: '活動中', dot: 'bg-emerald-500', chip: 'bg-emerald-100 text-emerald-700' },
+  break: { label: '休憩中', dot: 'bg-amber-500', chip: 'bg-amber-100 text-amber-800' },
+  soon: { label: 'まもなく開始', dot: 'bg-sky-500', chip: 'bg-sky-100 text-sky-700' },
+  standby: { label: '準備中', dot: 'bg-slate-400', chip: 'bg-slate-100 text-slate-600' },
+  ended: { label: '本日終了', dot: 'bg-slate-400', chip: 'bg-slate-100 text-slate-600' },
 };
 
 // にぎわいレベルごとの見た目。実際のメーター長は occupancyRatio(present)（上限25人）で出す。
