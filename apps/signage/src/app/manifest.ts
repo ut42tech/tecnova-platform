@@ -10,8 +10,9 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: '/',
     display: 'fullscreen',
     orientation: 'landscape',
-    background_color: '#020617',
-    theme_color: '#2563eb',
+    // 配信レイアウトの明るい地に合わせる（スプラッシュ＝sky-50、テーマ＝sky-500）。
+    background_color: '#f0f9ff',
+    theme_color: '#0ea5e9',
     lang: 'ja',
   };
 }

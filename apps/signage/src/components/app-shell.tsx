@@ -13,9 +13,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <MeProvider
       forbiddenMessage="サイネージの利用権限がありません"
-      loadingClassName="flex min-h-svh items-center justify-center bg-slate-950 text-slate-300"
-      forbiddenClassName="flex min-h-svh flex-col items-center justify-center gap-4 bg-slate-950 p-8 text-center text-slate-300"
-      errorClassName="flex min-h-svh flex-col items-center justify-center gap-4 bg-slate-950 p-8 text-center text-slate-300"
+      loadingClassName="flex min-h-svh items-center justify-center bg-gradient-to-b from-sky-50 to-white text-slate-500"
+      forbiddenClassName="flex min-h-svh flex-col items-center justify-center gap-4 bg-gradient-to-b from-sky-50 to-white p-8 text-center text-slate-600"
+      errorClassName="flex min-h-svh flex-col items-center justify-center gap-4 bg-gradient-to-b from-sky-50 to-white p-8 text-center text-slate-600"
     >
       {children}
     </MeProvider>

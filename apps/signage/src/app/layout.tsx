@@ -18,7 +18,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#020617',
+  // 配信レイアウトの地（sky-50）に合わせる。
+  themeColor: '#f0f9ff',
   // 大型モニターのキオスク表示。ピンチズーム無効で誤操作を防ぐ。
   width: 'device-width',
   initialScale: 1,
@@ -29,7 +30,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ja" className={cn('h-full antialiased font-sans', fontSans.variable)}>
-      <body className="min-h-full bg-slate-950">
+      <body className="min-h-full bg-sky-50">
         <AppShell>{children}</AppShell>
       </body>
     </html>

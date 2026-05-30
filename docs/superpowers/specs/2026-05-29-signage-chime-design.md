@@ -2,6 +2,7 @@
 
 - 作成日: 2026-05-29
 - 改訂: 2026-05-30 — 動画レイヤを self-host HTML5 `<video>` から **YouTube（IFrame Player API 自前キュー ＋ YouTube Data API）** に変更。BGMは **無音トグル ＋ OS側 Spotify**（アプリ非統合）。チャイム／サイクル／認証／`/api/sessions/today` ポーリングは不変。
+- 改訂: 2026-05-30 — **L2レイアウトを「配信（ブロードキャスト）風」に刷新**。「全画面動画＋上部情報バー」から、**縮小した動画パネル＋右レーン（チャイムの役割＝次チャイムまでのカウントダウン）＋下部の巡回インフォメーション（lower-third）**へ。休憩/待機はパネル上にスライドをクロスフェード。世界観は checkin に統一（sky→white・LINE Seed JP・motion + reduced-motion 尊重）。**状態機械・チャイム・サイクル・稼働判定・データ経路は不変**（§2の状態機械は同じ／画面の見せ方のみ変更）。にぎわい表示は `packages/shared/src/attendance-level.ts` の純粋ロジックで来場者数から算出。
 - ステータス: 設計合意済み（実装計画はこの後に更新）
 - 関連: `docs/architecture.md`（拡張ロードマップに本アプリを追記予定）
 
