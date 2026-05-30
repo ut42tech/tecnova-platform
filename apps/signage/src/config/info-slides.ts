@@ -1,9 +1,7 @@
-// 会場/開催回ごとに運用者が編集する想定の静的インフォメーション（巡回スライド用）。
-// データ駆動ではないので、ここを書き換えるだけで掲示内容を差し替えられる。
-
-// 前回のテクノバの情報（前回の来場数・トピック・写真の案内など、自由文）。
-// 改行は \n で。空文字のあいだは該当スライドを出さない。
-export const PREVIOUS_EVENT_NOTE = '';
+// 巡回スライド用の静的設定。データ駆動でない値だけをここに置く。
 
 // 公式 Instagram のハンドル（先頭の @ は付けない）。
 export const INSTAGRAM_HANDLE = 'tecnovanagasaki';
+
+// 上記から組み立てる公式 Instagram の URL（QR・リンク用）。
+export const INSTAGRAM_URL = `https://www.instagram.com/${INSTAGRAM_HANDLE}/`;

@@ -12,8 +12,9 @@ import { classifyAttendanceLevel, occupancyRatio } from '@tecnova/shared/attenda
 import type { SignagePlaylistItem } from '@tecnova/shared/schemas';
 import { cn } from '@tecnova/ui/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { QRCodeSVG } from 'qrcode.react';
 import type { ReactNode } from 'react';
-import { INSTAGRAM_HANDLE, PREVIOUS_EVENT_NOTE } from '@/config/info-slides';
+import { INSTAGRAM_HANDLE, INSTAGRAM_URL } from '@/config/info-slides';
 import { ATTENDANCE_META } from '@/lib/broadcast';
 import {
   tickerLineTransition,
@@ -22,7 +23,9 @@ import {
   tickerSlideInitial,
   tickerSlideTransition,
 } from '@/lib/motion';
+import { usePreviousSummary } from '@/lib/use-previous-summary';
 import { useStoryRotation } from '@/lib/use-story-rotation';
+import { type HealthStatus, useSystemHealth } from '@/lib/use-system-health';
 import { StoryBars } from './story-bars';
 import { StoryProgress } from './story-progress';
 
@@ -41,13 +44,28 @@ interface Props {
   debug?: boolean; // ?debug=1 時に手動送りボタンを出す
 }
 
-// 配信下部の lower-third。動画タイトル・来場・にぎわい・コンセプト・OSS・主催/共催を巡回。
+const HEALTH_META: Record<HealthStatus, { label: string; dot: string }> = {
+  ok: { label: '稼働中', dot: 'bg-emerald-500' },
+  checking: { label: '接続を確認中…', dot: 'bg-slate-400' },
+  down: { label: '接続できません', dot: 'bg-rose-500' },
+};
+
+const prevDateFmt = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short',
+});
+
+// 配信下部の lower-third。来場・にぎわい・稼働状況・公式 Instagram・前回の情報・動画タイトルを巡回。
 // 巡回の時間源は useStoryRotation（AnimationFrame）に一本化し、進行バーの満ち＝送りとする。
 export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Props) {
   const reduced = useReducedMotion();
   const level = classifyAttendanceLevel(present);
   const liveliness = ATTENDANCE_META[level];
   const occ = occupancyRatio(present);
+  const health = useSystemHealth();
+  const previous = usePreviousSummary();
 
   const slides: Slide[] = [];
   slides.push({
@@ -85,11 +103,17 @@ export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Pro
     ),
   });
   slides.push({
-    id: 'platform',
+    id: 'health',
     icon: <IconServer />,
     chip: 'bg-slate-100 text-slate-600',
     label: 'テクノバながさきプラットフォーム',
-    value: 'テクノバを支える基盤システム。\nチーフメンターのたくやが開発・運用しています。',
+    value: (
+      <span className="inline-flex items-center gap-2.5 align-middle">
+        <span className={cn('size-2.5 rounded-full', HEALTH_META[health].dot)} />
+        {HEALTH_META[health].label}
+        <span className="text-[0.6em] font-bold text-slate-400">テクノバを支える基盤システム</span>
+      </span>
+    ),
   });
   slides.push({
     id: 'instagram',
@@ -99,22 +123,25 @@ export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Pro
     value: (
       <>
         @{INSTAGRAM_HANDLE}
-        <span className="ml-2 text-[0.62em] font-bold text-slate-400">さいしんの活動はこちら</span>
+        <span className="ml-2 text-[0.62em] font-bold text-slate-400">
+          QR をスマホで読みとってね
+        </span>
       </>
     ),
   });
-  // 前回のテクノバ情報（config に設定があるときだけ）。
-  if (PREVIOUS_EVENT_NOTE) {
+  // 前回開催のデータがあるときだけ（後着なので末尾寄りに置きインデックスずれを防ぐ）。
+  if (previous) {
+    const stay =
+      previous.averageStayMinutes !== null ? `・平均滞在 ${previous.averageStayMinutes}分` : '';
     slides.push({
-      id: 'previous-info',
+      id: 'previous',
       icon: <IconHistory />,
       chip: 'bg-violet-100 text-violet-700',
       label: '前回のテクノバ',
-      value: PREVIOUS_EVENT_NOTE,
+      value: `${prevDateFmt.format(new Date(`${previous.date}T00:00:00+09:00`))}｜${previous.participantCount}人が来場${stay}`,
     });
   }
-  // いま流れている動画タイトルは末尾に追加する。タイトルは後着なので、先頭挿入だと
-  // 既存スライドの index がずれて表示が飛ぶ（末尾追加なら他スライドの位置は不変）。
+  // いま流れている動画タイトルは末尾に追加（先頭挿入だと既存スライドの index がずれる）。
   if (currentTrack?.title) {
     slides.push({
       id: 'now-playing',
@@ -130,7 +157,7 @@ export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Pro
   const active = slides[index];
 
   return (
-    <div className="flex items-center gap-[clamp(0.75rem,1.6vw,1.5rem)] rounded-2xl bg-white/90 px-[clamp(1rem,2vw,2rem)] py-[clamp(0.6rem,1.4vh,1.1rem)] shadow-sm ring-1 ring-foreground/10 backdrop-blur">
+    <div className="relative flex h-[clamp(4.75rem,9.5vh,7rem)] items-center gap-[clamp(0.75rem,1.6vw,1.5rem)] rounded-2xl bg-white/90 px-[clamp(1rem,2vw,2rem)] shadow-sm ring-1 ring-foreground/10 backdrop-blur">
       {/* アイコンチップ：key 切替時だけ scale + ごく僅かな傾きを1回（spring）。 */}
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
@@ -172,7 +199,7 @@ export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Pro
               initial={reduced ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={reduced ? { duration: 0 } : tickerLineTransition(1)}
-              className="line-clamp-2 whitespace-pre-line text-[clamp(1rem,2vw,1.7rem)] font-black leading-snug text-slate-900"
+              className="line-clamp-2 whitespace-pre-line text-[clamp(1rem,2vw,1.65rem)] font-bold leading-snug text-slate-800"
             >
               {active.value}
             </motion.p>
@@ -180,7 +207,30 @@ export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Pro
         </AnimatePresence>
       </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-[clamp(0.4rem,0.8vw,0.75rem)]">
+      {/* Instagram スライド中だけ、QR をティッカー上へ大きくせり出して見せる
+          （細い帯に小さく収めると読みづらいため、白カードのコールアウトにする）。 */}
+      <AnimatePresence>
+        {active.id === 'instagram' && (
+          <motion.div
+            className="absolute right-[clamp(0.75rem,2vw,2.5rem)] bottom-full z-20 mb-[clamp(0.5rem,1.5vh,1.25rem)] flex flex-col items-center gap-[clamp(0.3rem,0.8vh,0.6rem)] rounded-2xl bg-white p-[clamp(0.6rem,1.2vw,1rem)] shadow-[0_18px_50px_-28px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/10"
+            initial={reduced ? false : { opacity: 0, y: 14, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.96 }}
+            transition={reduced ? { duration: 0 } : { duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <QRCodeSVG
+              value={INSTAGRAM_URL}
+              marginSize={2}
+              className="size-[clamp(6.5rem,13vh,10rem)]"
+            />
+            <span className="text-[clamp(0.72rem,1.1vw,0.95rem)] font-bold text-slate-600">
+              フォローしてね @{INSTAGRAM_HANDLE}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex shrink-0 items-center gap-[clamp(0.4rem,0.8vw,0.75rem)]">
         {debug && (
           <span className="mr-1 flex gap-1">
             <button
