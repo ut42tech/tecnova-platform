@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  classifyCycleMoment,
-  cycleChimeEventsForDay,
-  msUntilNextBoundary,
-} from './activity-cycle';
+import { classifyCycleMoment, cycleChimeEventsForDay, msUntilNextBoundary } from './activity-cycle';
 
 // JST 指定の instant を作るヘルパ（Asia/Tokyo は固定 UTC+9）。
 const jst = (iso: string): Date => new Date(`${iso}+09:00`);
@@ -58,7 +54,9 @@ describe('cycleChimeEventsForDay', () => {
   });
 
   it('朝タームの最初の3イベントは resume@9:00 / break@9:50 / resume@10:00', () => {
-    const ev = cycleChimeEventsForDay(jst('2026-05-30T09:00:00')).filter((e) => e.term === 'morning');
+    const ev = cycleChimeEventsForDay(jst('2026-05-30T09:00:00')).filter(
+      (e) => e.term === 'morning',
+    );
     expect(ev[0]).toMatchObject({ kind: 'resume', at: jst('2026-05-30T09:00:00') });
     expect(ev[1]).toMatchObject({ kind: 'break', at: jst('2026-05-30T09:50:00') });
     expect(ev[2]).toMatchObject({ kind: 'resume', at: jst('2026-05-30T10:00:00') });

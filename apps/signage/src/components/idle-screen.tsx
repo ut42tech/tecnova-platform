@@ -20,7 +20,11 @@ export function IdleScreen({ show, soon, now, nextStartAt, present }: Props) {
       <p className="text-5xl font-black tracking-wide">tec-nova Nagasaki</p>
       <p className="text-6xl font-extrabold tabular-nums">{jstHm(now)}</p>
       <p className="text-2xl text-slate-300">
-        {soon ? 'まもなく開始' : nextStartAt ? `次は ${jstHm(nextStartAt)} から` : '本日は終了しました'}
+        {soon
+          ? 'まもなく開始'
+          : nextStartAt
+            ? `次は ${jstHm(nextStartAt)} から`
+            : '本日は終了しました'}
       </p>
       {present > 0 && <p className="text-lg text-slate-400">在館 {present} 人</p>}
     </div>

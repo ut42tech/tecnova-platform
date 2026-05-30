@@ -40,11 +40,12 @@ const tone = (
 };
 
 // 種別ごとに音色・音程を変える。
-const PATTERNS: Record<ChimeKind, { freqs: [number, number]; type: OscillatorType; dur: number }> = {
-  resume: { freqs: [784, 988], type: 'sine', dur: 0.7 }, // 上行＝再開
-  break: { freqs: [988, 784], type: 'sine', dur: 0.8 }, // 下行＝休憩（キンコン）
-  'term-end': { freqs: [880, 587], type: 'triangle', dur: 1.2 }, // 長め＝ターム終了
-};
+const PATTERNS: Record<ChimeKind, { freqs: [number, number]; type: OscillatorType; dur: number }> =
+  {
+    resume: { freqs: [784, 988], type: 'sine', dur: 0.7 }, // 上行＝再開
+    break: { freqs: [988, 784], type: 'sine', dur: 0.8 }, // 下行＝休憩（キンコン）
+    'term-end': { freqs: [880, 587], type: 'triangle', dur: 1.2 }, // 長め＝ターム終了
+  };
 
 export const playChime = (kind: ChimeKind): void => {
   const c = getCtx();
