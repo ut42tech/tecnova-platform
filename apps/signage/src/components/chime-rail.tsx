@@ -13,6 +13,8 @@ import { cn } from '@tecnova/ui/lib/utils';
 import type { ReactNode } from 'react';
 import { jstHm } from '@/lib/time';
 import { CountdownRing } from './countdown-ring';
+import { TermTimeline } from './term-timeline';
+import { UpNext } from './up-next';
 
 // ターム別アクセント（TermBadge と同系統の色）。
 const TERM_TONE: Record<TermId, { heading: string; range: string }> = {
@@ -25,6 +27,12 @@ const KIND_LABEL: Record<ChimeKind, string> = {
   resume: '活動再開',
   break: '休憩',
   'term-end': 'ターム終了',
+};
+
+const MARKER_CLASS: Record<'emerald' | 'amber' | 'sky', string> = {
+  emerald: 'bg-emerald-500',
+  amber: 'bg-amber-500',
+  sky: 'bg-sky-500',
 };
 
 function RailCard({ className, children }: { className?: string; children: ReactNode }) {
@@ -48,8 +56,8 @@ interface Props {
   nextStartAt: Date | null; // 次タームの開始時刻（ターム外のみ）
 }
 
-// 右レーン＝チャイムの役割を持つゾーン。活動/休憩中は次チャイムまでのカウントダウン、
-// idle 中は本日のスケジュールを出す。
+// 右レーン＝チャイムの役割を持つゾーン。活動/休憩中は次チャイムまでのカウントダウン＋
+// 次の予定＋ターム進行タイムライン、idle 中は本日のスケジュールを出す。
 export function ChimeRail({ phase, moment, now, soon, nextStartAt }: Props) {
   const isRunning = phase === 'activity' || phase === 'break';
 
@@ -71,7 +79,6 @@ export function ChimeRail({ phase, moment, now, soon, nextStartAt }: Props) {
           ? 'このタームの終わりまで'
           : '再開まで';
     const targetLabel = next ? `${jstHm(next.at)} に${KIND_LABEL[next.kind]}` : null;
-    const cycleIndex = moment.cycleIndex ?? 1;
 
     return (
       <div className="flex h-full min-h-0 flex-col gap-[clamp(0.75rem,1.4vh,1.25rem)]">
@@ -94,30 +101,18 @@ export function ChimeRail({ phase, moment, now, soon, nextStartAt }: Props) {
           )}
         </RailCard>
 
-        <RailCard className="flex flex-1 flex-col items-center justify-center gap-[clamp(0.75rem,1.4vh,1.25rem)]">
-          <CountdownRing
-            remaining={remaining}
-            total={total}
-            label={ringLabel}
-            targetLabel={targetLabel}
-            tone={ringTone}
-          />
-          <div className="flex items-center gap-3">
-            <span className="text-[clamp(0.75rem,1.1vw,0.95rem)] font-bold text-slate-400">
-              サイクル {cycleIndex} / 3
-            </span>
-            <span className="flex items-center gap-1.5">
-              {[1, 2, 3].map((n) => (
-                <span
-                  key={n}
-                  className={cn(
-                    'size-2.5 rounded-full',
-                    n <= cycleIndex ? 'bg-slate-800' : 'bg-slate-300',
-                  )}
-                />
-              ))}
-            </span>
+        <RailCard className="flex min-h-0 flex-1 flex-col justify-between gap-[clamp(0.75rem,1.6vh,1.4rem)] overflow-hidden">
+          <div className="flex flex-col items-center gap-[clamp(0.6rem,1.3vh,1.1rem)]">
+            <CountdownRing
+              remaining={remaining}
+              total={total}
+              label={ringLabel}
+              targetLabel={targetLabel}
+              tone={ringTone}
+            />
+            <UpNext now={now} />
           </div>
+          <TermTimeline term={moment.term} now={now} markerClass={MARKER_CLASS[ringTone]} />
         </RailCard>
       </div>
     );

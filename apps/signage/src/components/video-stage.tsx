@@ -37,7 +37,7 @@ export function VideoStage({
 }: Props) {
   const reduced = useReducedMotion();
   return (
-    <div className="relative h-full min-h-0 overflow-hidden rounded-2xl bg-slate-950 shadow-xl ring-1 ring-foreground/10">
+    <div className="relative h-full min-h-0 overflow-hidden rounded-2xl bg-slate-950 ring-1 ring-slate-900/10 shadow-[0_18px_50px_-28px_rgba(15,23,42,0.40)] after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:ring-1 after:ring-inset after:ring-white/10">
       <YoutubePlayer
         videoIds={videoIds}
         active={phase === 'activity'}
