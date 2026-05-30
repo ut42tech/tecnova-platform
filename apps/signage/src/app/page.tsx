@@ -5,7 +5,7 @@ import {
   classifyCycleMoment,
   msUntilNextBoundary,
 } from '@tecnova/shared/activity-cycle';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { BroadcastFrame } from '@/components/broadcast-frame';
 import { DebugPanel } from '@/components/debug-panel';
 import { TapToStart } from '@/components/tap-to-start';
@@ -32,7 +32,8 @@ export default function SignagePage() {
   const now = useNow(debug.debugEnabled ? 250 : 1000);
   const data = useSignageData();
   const tracks = usePlaylist();
-  const videoIds = tracks.map((t) => t.videoId);
+  // identity を安定させ、プレーヤーの救済 effect（deps: videoIds）が毎レンダ走るのを避ける。
+  const videoIds = useMemo(() => tracks.map((t) => t.videoId), [tracks]);
   const { muted, toggle } = useMute();
   // いま再生中トラック（インフォメーションの動画タイトル表示用）。
   const [currentIndex, setCurrentIndex] = useState(0);

@@ -47,11 +47,18 @@ export const useChimeScheduler = ({
         last = now;
       }
       const events = cycleChimeEventsForDay(new Date(now));
+      // 同一インスタントに複数イベントが重なる場合（例: 隣接タームの term-end@16:00 と
+      // resume@16:00 が両方稼働中のとき）、チャイム音が重ならないよう稼働中の1件だけ鳴らす。
+      // 通常運用ではタームは日替わりで排他なので衝突は起きず、従来挙動と完全同値。
+      const firedAt = new Set<number>();
       for (const e of events) {
         const at = e.at.getTime();
         if (at > last && at <= now && !fired.has(e.key)) {
-          fired.add(e.key);
-          if (isActiveRef.current(e.term)) onChimeRef.current(e);
+          fired.add(e.key); // key 単位の二重発火防止（tick をまたいで）は全件に効かせる
+          if (isActiveRef.current(e.term) && !firedAt.has(at)) {
+            firedAt.add(at);
+            onChimeRef.current(e);
+          }
         }
       }
       last = now;

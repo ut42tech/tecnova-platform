@@ -24,6 +24,7 @@ signageRoute.get('/previous-summary', async (c) =>
 // CORS 済みの /api 配下に置く。
 signageRoute.get('/health', async (c) => {
   const db = createDb(c.env);
-  await db.select({ n: count() }).from(events).limit(1);
+  // count() は1行に畳まれるので limit は不要。到達できれば ok。
+  await db.select({ n: count() }).from(events);
   return c.json({ status: 'ok', time: new Date().toISOString() });
 });

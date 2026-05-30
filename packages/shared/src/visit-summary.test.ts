@@ -35,6 +35,19 @@ describe('summarizeStays', () => {
     expect(r.averageStayMinutes).toBe(40);
   });
 
+  it('一部のみ退館済み：来場は全員数え、平均は退館済みの人だけ（分母に注意）', () => {
+    // p2 は未退館 → 人数には数えるが平均の分母には入れない。
+    const r = summarizeStays([stay('p1', 0, 30), stay('p2', 0, null)]);
+    expect(r.count).toBe(2);
+    expect(r.averageStayMinutes).toBe(30);
+  });
+
+  it('同一人物の開＋閉が混在：閉区間のみ算入し、人は1回だけ数える', () => {
+    const r = summarizeStays([stay('p1', 0, 30), stay('p1', 60, null)]);
+    expect(r.count).toBe(1);
+    expect(r.averageStayMinutes).toBe(30);
+  });
+
   it('平均は分に四捨五入', () => {
     const r = summarizeStays([{ participantId: 'p1', checkedInAt: 0, checkedOutAt: 90_000 }]);
     expect(r.averageStayMinutes).toBe(2);
