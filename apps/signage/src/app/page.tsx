@@ -5,15 +5,23 @@ import {
   classifyCycleMoment,
   msUntilNextBoundary,
 } from '@tecnova/shared/activity-cycle';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { BreakScreen } from '@/components/break-screen';
+import { DebugPanel } from '@/components/debug-panel';
 import { IdleScreen } from '@/components/idle-screen';
 import { InfoBar } from '@/components/info-bar';
 import { MuteToggle } from '@/components/mute-toggle';
 import { TapToStart } from '@/components/tap-to-start';
 import { YoutubePlayer } from '@/components/youtube-player';
 import { ensureAudioRunning, playChime, resumeAudio } from '@/lib/chimes';
-import { getNow } from '@/lib/now';
+import {
+  enableDebug,
+  getDebugServerSnapshot,
+  getDebugSnapshot,
+  getNow,
+  isDebugQueryEnabled,
+  subscribeDebug,
+} from '@/lib/now';
 import { useChimeScheduler } from '@/lib/use-chime-scheduler';
 import { useMute } from '@/lib/use-mute';
 import { useNow } from '@/lib/use-now';
@@ -23,15 +31,25 @@ import { useWakeLock } from '@/lib/use-wake-lock';
 
 export default function SignagePage() {
   const [started, setStarted] = useState(false);
-  const now = useNow(1000);
+  // ?debug=1 のときだけ有効なプレビュー用ストア。本番では全フィールド既定値のまま。
+  const debug = useSyncExternalStore(subscribeDebug, getDebugSnapshot, getDebugServerSnapshot);
+  const now = useNow(debug.debugEnabled ? 250 : 1000);
   const data = useSignageData();
   const videoIds = usePlaylist();
   const { muted, toggle } = useMute();
   const moment = classifyCycleMoment(now);
 
+  // ?debug=1 ならマウント後にデバッグストアを有効化する（SSR/hydration は素通り）。
+  useEffect(() => {
+    if (isDebugQueryEnabled()) enableDebug();
+  }, []);
+
   // termCounts は毎ポーリングで作り直されるため useCallback による安定化は無意味
   // （スケジューラ側も毎 tick で ref に取り直す）。素の関数で十分。
-  const isTermActive = (term: 'morning' | 'afternoon' | 'evening') => data.termCounts[term] > 0;
+  // デバッグ時は forcedActiveTerms を OR して、実チェックインデータ無しでも稼働を再現する
+  // （debugEnabled=false なら短絡し本番挙動と完全同値）。
+  const isTermActive = (term: 'morning' | 'afternoon' | 'evening') =>
+    (debug.debugEnabled && debug.forcedActiveTerms.includes(term)) || data.termCounts[term] > 0;
 
   // 現タームが稼働中（初回チェックイン済み）なら moment.phase、未稼働/ターム外は idle。
   const active = moment.term !== null && isTermActive(moment.term);
@@ -42,7 +60,13 @@ export default function SignagePage() {
   const onChime = useCallback((e: ChimeEvent) => {
     playChime(e.kind);
   }, []);
-  useChimeScheduler({ enabled: started, isTermActive, onChime, getNow });
+  useChimeScheduler({
+    enabled: started,
+    isTermActive,
+    onChime,
+    getNow,
+    jumpEpoch: debug.jumpEpoch,
+  });
 
   // タブ復帰時に AudioContext が suspended に戻っていれば再開する（spec §6）。
   useEffect(() => {
@@ -114,6 +138,20 @@ export default function SignagePage() {
       {started && <MuteToggle muted={muted} onToggle={toggle} />}
 
       {!started && <TapToStart onStart={handleStart} />}
+
+      {/* ?debug=1 のときだけプレビュー操作バーを出す（本番壁面では出ない）。 */}
+      {debug.debugEnabled && (
+        <DebugPanel
+          data={data}
+          videoIdCount={videoIds.length}
+          muted={muted}
+          started={started}
+          onEnableAudio={() => {
+            void resumeAudio();
+            setStarted(true);
+          }}
+        />
+      )}
     </main>
   );
 }

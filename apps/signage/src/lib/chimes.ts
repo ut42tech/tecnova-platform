@@ -19,6 +19,9 @@ export const ensureAudioRunning = async (): Promise<void> => {
   if (ctx && ctx.state !== 'running') await ctx.resume();
 };
 
+// デバッグパネルの状態表示用。未生成なら 'none'。
+export const getAudioState = (): AudioContextState | 'none' => ctx?.state ?? 'none';
+
 const tone = (
   c: AudioContext,
   freq: number,
