@@ -9,6 +9,7 @@
     "./schemas": "./src/schemas/index.ts",
     "./venue-schedule": "./src/venue-schedule.ts",
     "./activity-cycle": "./src/activity-cycle.ts",
+    "./attendance-level": "./src/attendance-level.ts",
     "./youtube": "./src/youtube.ts"
   },
   "scripts": {
