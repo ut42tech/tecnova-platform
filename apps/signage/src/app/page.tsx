@@ -6,13 +6,9 @@ import {
   msUntilNextBoundary,
 } from '@tecnova/shared/activity-cycle';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { BreakScreen } from '@/components/break-screen';
+import { BroadcastFrame } from '@/components/broadcast-frame';
 import { DebugPanel } from '@/components/debug-panel';
-import { IdleScreen } from '@/components/idle-screen';
-import { InfoBar } from '@/components/info-bar';
-import { MuteToggle } from '@/components/mute-toggle';
 import { TapToStart } from '@/components/tap-to-start';
-import { YoutubePlayer } from '@/components/youtube-player';
 import { ensureAudioRunning, playChime, resumeAudio } from '@/lib/chimes';
 import {
   enableDebug,
@@ -38,6 +34,9 @@ export default function SignagePage() {
   const tracks = usePlaylist();
   const videoIds = tracks.map((t) => t.videoId);
   const { muted, toggle } = useMute();
+  // いま再生中トラック（インフォメーションの動画タイトル表示用）。
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentTrack = tracks[currentIndex] ?? null;
   const moment = classifyCycleMoment(now);
 
   // ?debug=1 ならマウント後にデバッグストアを有効化する（SSR/hydration は素通り）。
@@ -45,8 +44,6 @@ export default function SignagePage() {
     if (isDebugQueryEnabled()) enableDebug();
   }, []);
 
-  // termCounts は毎ポーリングで作り直されるため useCallback による安定化は無意味
-  // （スケジューラ側も毎 tick で ref に取り直す）。素の関数で十分。
   // デバッグ時は forcedActiveTerms を OR して、実チェックインデータ無しでも稼働を再現する
   // （debugEnabled=false なら短絡し本番挙動と完全同値）。
   const isTermActive = (term: 'morning' | 'afternoon' | 'evening') =>
@@ -89,7 +86,7 @@ export default function SignagePage() {
     setStarted(true);
   };
 
-  // フェーズ終端までの秒（活動→休憩 / 休憩→再開）。
+  // フェーズ終端までの秒（活動→休憩 / 休憩→再開）。休憩スライドのカウントダウンに使う。
   const phaseSecondsLeft =
     moment.phaseEndsAt === null
       ? null
@@ -97,46 +94,28 @@ export default function SignagePage() {
 
   // idle の理由を区別：ターム内・未稼働なら「まもなく開始」、ターム外なら次タームの開始時刻。
   const inUnstartedTerm = moment.term !== null && !active;
-  // 次の活動開始（次境界＝次タームの resume）はターム外のときだけ算出する
-  // （ターム内・未稼働で算出すると次境界が break になり「次は HH:MM から」が誤表示になる）。
+  // 次の活動開始（次境界＝次タームの resume）はターム外のときだけ算出する。
   const msNext = moment.term === null ? msUntilNextBoundary(now) : null;
   const nextStartAt = msNext === null ? null : new Date(now.getTime() + msNext);
 
   return (
-    <main className="relative h-svh w-screen overflow-hidden bg-slate-950 text-white">
-      {/* 動画は活動フェーズで再生。起動タップ前でもミュート自動再生で映像は出る（spec §6）。 */}
-      <YoutubePlayer
+    <main className="relative h-svh w-screen overflow-hidden">
+      <BroadcastFrame
+        phase={phase}
+        moment={moment}
+        now={now}
+        data={data}
         videoIds={videoIds}
-        active={phase === 'activity'}
+        currentTrack={currentTrack}
         muted={muted}
         started={started}
-      />
-
-      {phase === 'activity' && moment.term && (
-        <InfoBar
-          term={moment.term}
-          now={now}
-          present={data.currentlyPresent}
-          secondsToBreak={phaseSecondsLeft}
-        />
-      )}
-
-      <BreakScreen
-        show={phase === 'break'}
-        secondsToResume={phaseSecondsLeft}
-        present={data.currentlyPresent}
-      />
-
-      <IdleScreen
-        show={phase === 'idle'}
+        onToggleMute={toggle}
+        onVideoChange={setCurrentIndex}
         soon={inUnstartedTerm}
-        now={now}
         nextStartAt={nextStartAt}
-        present={data.currentlyPresent}
+        phaseSecondsLeft={phaseSecondsLeft}
+        debug={debug.debugEnabled}
       />
-
-      {/* 無音トグルは起動後のみ表示（運用者向け）。既定は無音。 */}
-      {started && <MuteToggle muted={muted} onToggle={toggle} />}
 
       {!started && <TapToStart onStart={handleStart} />}
 
