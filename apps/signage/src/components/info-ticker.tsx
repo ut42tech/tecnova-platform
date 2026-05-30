@@ -12,10 +12,9 @@ import { classifyAttendanceLevel, occupancyRatio } from '@tecnova/shared/attenda
 import type { SignagePlaylistItem } from '@tecnova/shared/schemas';
 import { cn } from '@tecnova/ui/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import Image from 'next/image';
 import { QRCodeSVG } from 'qrcode.react';
 import type { ReactNode } from 'react';
-import { INSTAGRAM_AVATAR, INSTAGRAM_HANDLE, INSTAGRAM_URL } from '@/config/info-slides';
+import { INSTAGRAM_HANDLE, INSTAGRAM_URL } from '@/config/info-slides';
 import { ATTENDANCE_META } from '@/lib/broadcast';
 import {
   tickerLineTransition,
@@ -213,45 +212,20 @@ export function InfoTicker({ currentTrack, present, totalCheckedIn, debug }: Pro
       <AnimatePresence>
         {active.id === 'instagram' && (
           <motion.div
-            className="absolute right-[clamp(0.75rem,2vw,2.5rem)] bottom-full z-20 mb-[clamp(0.6rem,1.8vh,1.5rem)] w-[clamp(11rem,24vh,15rem)] overflow-hidden rounded-[1.25rem] bg-white shadow-[0_22px_60px_-28px_rgba(15,23,42,0.5)] ring-1 ring-slate-900/10"
+            className="absolute right-[clamp(0.75rem,2vw,2.5rem)] bottom-full z-20 mb-[clamp(0.5rem,1.5vh,1.25rem)] flex flex-col items-center gap-[clamp(0.3rem,0.8vh,0.6rem)] rounded-2xl bg-white p-[clamp(0.6rem,1.2vw,1rem)] shadow-[0_18px_50px_-28px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/10"
             initial={reduced ? false : { opacity: 0, y: 14, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduced ? { opacity: 0 } : { opacity: 0, y: 14, scale: 0.96 }}
             transition={reduced ? { duration: 0 } : { duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
           >
-            {/* Instagram ブランドグラデのヘッダ：アバター＋ハンドル＋フォロー誘導。 */}
-            <div className="flex flex-col items-center gap-[clamp(0.25rem,0.7vh,0.5rem)] bg-[linear-gradient(115deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5)] px-[clamp(0.75rem,1.6vw,1.25rem)] py-[clamp(0.6rem,1.4vh,1rem)] text-white">
-              <span className="grid size-[clamp(2.4rem,5vh,3.5rem)] place-items-center rounded-full bg-white p-[2.5px] shadow-sm">
-                {INSTAGRAM_AVATAR ? (
-                  <Image
-                    src={INSTAGRAM_AVATAR}
-                    alt=""
-                    width={64}
-                    height={64}
-                    className="size-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="grid size-full place-items-center rounded-full bg-[linear-gradient(115deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5)] text-white">
-                    <IconBrandInstagram className="size-[56%]" />
-                  </span>
-                )}
-              </span>
-              <span className="max-w-full whitespace-nowrap text-[clamp(0.7rem,1.05vw,0.92rem)] font-black leading-none tracking-tight">
-                @{INSTAGRAM_HANDLE}
-              </span>
-              <span className="inline-flex items-center gap-1 text-[clamp(0.6rem,0.92vw,0.8rem)] font-bold opacity-95">
-                <IconBrandInstagram className="size-[1.15em]" />
-                フォローしてね
-              </span>
-            </div>
-            {/* QR は白地に大きく置いて読み取りやすく。 */}
-            <div className="flex justify-center bg-white px-[clamp(0.6rem,1.2vw,1rem)] pt-[clamp(0.5rem,1vh,0.85rem)] pb-[clamp(0.6rem,1.2vh,1rem)]">
-              <QRCodeSVG
-                value={INSTAGRAM_URL}
-                marginSize={1}
-                className="size-[clamp(7rem,14vh,11rem)]"
-              />
-            </div>
+            <QRCodeSVG
+              value={INSTAGRAM_URL}
+              marginSize={2}
+              className="size-[clamp(6.5rem,13vh,10rem)]"
+            />
+            <span className="text-[clamp(0.72rem,1.1vw,0.95rem)] font-bold text-slate-600">
+              フォローしてね @{INSTAGRAM_HANDLE}
+            </span>
           </motion.div>
         )}
       </AnimatePresence>
