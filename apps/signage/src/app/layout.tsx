@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { LINE_Seed_JP } from 'next/font/google';
 import '@tecnova/ui/globals.css';
 import { cn } from '@tecnova/ui/lib/utils';
+import { AppShell } from '@/components/app-shell';
 
 const fontSans = LINE_Seed_JP({
   variable: '--font-sans',
@@ -28,7 +29,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ja" className={cn('h-full antialiased font-sans', fontSans.variable)}>
-      <body className="min-h-full bg-slate-950">{children}</body>
+      <body className="min-h-full bg-slate-950">
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }
