@@ -65,6 +65,19 @@ Phase 1（MVP）は本番デプロイ済みで稼働中。主要な完了項目�
   - 該当 commit: `eea5313`（`/api/stats/participation`）, `0c762be`（profile API 拡張）,
     `f90d55d`（venue-schedule モジュール）, `7db3e1d`（shared schema 拡張）,
     `b5a83f9`（checkin 受付 UI）, `32aa8fa`（admin 統計ページ）
+- **会場サイネージ `apps/signage`（PR #37: 放送風サイネージ＋チャイム・YouTube 版）** は
+  2026-05-30 に `develop` にマージ済みだが **`main` には入れていない**＝本番（Worker / Vercel）
+  未反映。大型モニター・キオスク向けの新アプリ（Next.js 16 / React 19・dev ポート 3002・
+  Vercel デプロイ）で、活動フェーズ中は YouTube 動画再生、休憩/待機はオーバーレイ、右レーンに
+  チャイムカウントダウン・ターム/サイクル、下部に巡回インフォを出す。チャイムは Web Audio 合成、
+  50分活動/10分休憩サイクルは `@tecnova/shared/activity-cycle`。認証は checkin/admin と同じ
+  メンター・ホワイトリスト（テクノバ共有の管理用 Google アカウントで1回ログイン）。稼働判定・
+  在館数は認証付き `GET /api/sessions/today` を再利用。
+  - 新規 API（`/api/signage` 配下・メンター認証必須）：`/playlist`（YouTube Data API・
+    Worker キャッシュ）、`/previous-summary`（前回開催の来場/滞在集計・PII なし）、`/health`
+    （D1 到達性）。本番に出す場合は `develop` → `main` マージで Worker / Vercel に反映される。
+  - 詳細仕様: `docs/superpowers/specs/2026-05-29-signage-chime-design.md`、
+    実装計画: `docs/superpowers/plans/2026-05-30-signage-chime-app.md`。
 
 ### 現状動作している範囲
 
@@ -102,8 +115,15 @@ Phase 1（MVP）は本番デプロイ済みで稼働中。主要な完了項目�
     - `/sessions/today`, `/participants`
     - `/mentors`（admin CRUD）
     - `/pre-registrations`（admin：学生側スプシの追加/削除）
+    - `/signage/*`（develop のみ・main 未反映）: `/playlist`（YouTube Data API・Worker
+      キャッシュ）、`/previous-summary`（前回開催の集計・PII なし）、`/health`（D1 到達性）
   - アクティベート時は `c.executionCtx.waitUntil()` で GAS Drive webhook を背面呼び出し
     （`GAS_DRIVE_WEBHOOK_URL` / `GAS_DRIVE_WEBHOOK_SECRET` 未設定なら no-op）
+- サイネージ（`localhost:3002`、develop のみ・Better Auth セッション必須）：
+  - `/login` → Google OAuth → mentors 許可リスト判定 → `/`（共有管理アカウントで1回ログイン）
+  - `/` 放送風サイネージ本体（活動中=YouTube 再生・休憩/待機=オーバーレイ・右レーンに
+    チャイムカウントダウン・下部に巡回インフォ）。`?debug=1` で擬似時計・稼働強制・手動チャイムの
+    プレビューバーが出る（本番フラグ無しは影響ゼロ）
 
 ### 本番側でできていること
 
@@ -146,6 +166,17 @@ Phase 1（MVP）は本番デプロイ済みで稼働中。主要な完了項目�
 - ログ CSV エクスポート
 - ターム境界の締め自動化（現状は受付端末「受付りれき」からの手動一括チェックアウト運用。
   `docs/mvp.md` §3.2 / 7章参照）
+
+### サイネージ（`apps/signage`）の残作業
+
+機能は develop で動作済み。本番運用に向けて未確定の設定値・現地作業が残る：
+
+- 共催（長崎市など）の実ロゴ差し替え（現状はテキスト表記でロゴ未配置）
+- 公式 Instagram ハンドル等の運用設定値（`src/config/info-slides.ts`）の本番値確認（要確認）
+- 本番キオスク端末（Chromium `--kiosk`・常時電源・wake lock）の現地設定
+- 本番反映（`develop` → `main` マージ）と、それに伴う Worker Secrets への
+  `YOUTUBE_API_KEY` / `YOUTUBE_PLAYLIST_ID` 登録・`TRUSTED_ORIGINS` へのサイネージ本番
+  ドメイン追加（要確認）
 
 ---
 
@@ -210,6 +241,43 @@ Phase 1（MVP）は本番デプロイ済みで稼働中。主要な完了項目�
 
 - `docs/mvp.md` の初期版は `[vars]` だったが Public リポジトリ運用方針と
   矛盾するため Secret 扱いに統一（PR #4 のドキュメント更新）
+
+### サイネージ（`apps/signage`）の必須 env が増えた
+
+- API 側 Secrets / `.dev.vars` に `YOUTUBE_API_KEY` / `YOUTUBE_PLAYLIST_ID` が必要
+  （`/api/signage/playlist` が YouTube Data API を叩くため）
+- `TRUSTED_ORIGINS` にサイネージ origin（dev: `http://localhost:3002`、本番はサイネージ
+  ドメイン）を追加しないと CORS で 401/403 になる（CORS と Better Auth trustedOrigins の
+  両方に効く）
+- フロント側は `NEXT_PUBLIC_API_URL`（未設定時 `http://localhost:8787`）
+- 新しい `@tecnova/*` パッケージを使うときは signage の `next.config.ts` の
+  `transpilePackages` に追加する
+
+### サイネージの YouTube 広告は埋め込み側で消せない
+
+- 仕様 §5.3：埋め込みプレーヤーは所有しない動画の広告を削除・スキップできない
+  （プログラム的スキップは YouTube API Developer Policies 違反）
+- 広告フリーを確実にできるのは **YPP 加入チャンネルで収益化オフにした自前アップロード動画**
+  か、self-host のみ
+- 再生順は自前キュー（`loadVideoById`）で関連動画/終了画面を抑止している
+
+### サイネージの音声自動再生・キオスク起動
+
+- ブラウザのオートプレイ制限のため、起動時「タップして開始」ゲートで chime（Web Audio）
+  解放・全画面・wake lock を行う。ミュート動画はタップ前から再生される
+- 本番は Chromium を `--kiosk` 等で起動する（横向き・スリープ無効は OS/ディスプレイ層で固定）
+
+### サイネージの `?debug=1` プレビューモード
+
+- `?debug=1` を付けたときだけ擬似時計（ジャンプ/速度×1×30×120/一時停止）・稼働強制・
+  手動チャイムの操作バーが出て、実時刻を待たず全状態・遷移・チャイムを検証できる
+- 本番（フラグ無し）は影響ゼロ（`debugEnabled=false` で全分岐が短絡＝従来挙動と完全同値）
+
+### サイネージのセキュリティレビュー済み（2026-05-30）
+
+- signage PR は 2026-05-30 にセキュリティレビューを実施し、新規の悪用可能な脆弱性なしを確認
+- 根拠：`/api/signage/*` はメンター認証必須・`/previous-summary` は集計のみで PII なし・
+  CORS は `TRUSTED_ORIGINS` の厳格照合
 
 ---
 

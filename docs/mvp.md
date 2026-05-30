@@ -378,7 +378,7 @@ Script）の Web App エンドポイント経由で作成する。
 
 ## 6. APIエンドポイント仕様
 
-> Hono on Workers の実装エンドポイント一覧。`apps/api/src/routes/` 配下にモジュール単位（health / auth / checkin / admin / pre-registrations）で実装され、契約は `packages/shared/src/schemas/`（checkin.ts / admin.ts）の Zod スキーマで定義される。
+> Hono on Workers の実装エンドポイント一覧。`apps/api/src/routes/` 配下にモジュール単位（health / auth / checkin / admin / pre-registrations / signage）で実装され、契約は `packages/shared/src/schemas/`（checkin.ts / admin.ts / signage.ts）の Zod スキーマで定義される。
 
 すべてのレスポンスは JSON。エラー時は `apiErrorHandler`（`apps/api/src/lib/errors.ts`）が HTTP 4xx/5xx + `{ "error": "ERROR_CODE", "message": "..." }` の封筒を返す。
 
@@ -864,11 +864,82 @@ admin 権限不要・ページネーションなし・active=true のみ・最�
 
 許可リスト判定: Better Authの `signIn` フックで mentors テーブルのemailを照合し、存在しないか `active=false` ならエラー。
 
+### 6.4 サイネージ用（`/api/signage/*`・メンター認証必須）
+
+会場サイネージ（`apps/signage`・放送風の大型モニター表示）専用 API。`/api/*` 配下なので
+`requireAuthenticatedMentor` と `TRUSTED_ORIGINS` ベースの CORS が適用済み（checkin/admin と
+同じメンター認証・ホワイトリスト）。実装は `apps/api/src/routes/signage.ts` / `apps/api/src/lib/signage.ts`、
+契約は `packages/shared/src/schemas/signage.ts`。稼働判定・在館数は既存 `GET /api/sessions/today`（§6.2）を
+再利用する（新規ではない）。UI・チャイム・動画再生の内部仕様は別 spec に委譲する（§6.4.4）。
+
+#### `GET /api/signage/playlist`
+
+会場で再生する動画プレイリスト（順序付き videoId 列）。YouTube Data API の playlistItems を取得し、
+再生可能（public/unlisted）なものを position 昇順で返す。Worker 側でモジュールスコープ 5 分キャッシュ。
+取得失敗（APIキー未設定・YouTube エラー等）は 500 になり、サイネージ側はフォールバック videoId に倒れる。
+
+**リクエスト**: なし
+
+**レスポンス**:
+
+```json
+{
+  "items": [{ "videoId": "dQw4w9WgXcQ", "title": "サンプル動画" }],
+  "refreshAt": "2026-05-15T09:35:00.000Z"
+}
+```
+
+注: `items[].title` は任意（取得できない場合は省略）。`refreshAt` はキャッシュ満了時刻（ISO 8601 UTC・クライアントのポーリング間隔ヒント）。
+
+#### `GET /api/signage/previous-summary`
+
+JST の今日より前で最新の開催日を集計して返す（集計値のみ・PII なし）。前回開催が無ければ `previous: null`。
+
+**リクエスト**: なし
+
+**レスポンス**:
+
+```json
+{
+  "previous": {
+    "date": "2026-05-08",
+    "participantCount": 23,
+    "averageStayMinutes": 95
+  }
+}
+```
+
+注: `participantCount` は退館→再入館を `participantId` で重複排除したユニーク人数。`averageStayMinutes` は退館済みが無ければ `null`。集計ロジックは `@tecnova/shared/visit-summary` の `summarizeStays`。
+
+#### `GET /api/signage/health`
+
+基盤システムの稼働確認（D1 到達性の軽量チェック）。`/health`（公開・root マウント）は CORS 対象外で
+別オリジンのサイネージから叩けないため、CORS 済みの `/api` 配下に置く。失敗時は 500 を返し、サイネージ側で「障害」表示に倒れる。
+
+**リクエスト**: なし
+
+**レスポンス**:
+
+```json
+{ "status": "ok", "time": "2026-05-15T09:32:15.000Z" }
+```
+
+#### 6.4.4 UI・チャイム・動画の詳細仕様
+
+放送風レイアウト・チャイムスケジューラ（50分活動/10分休憩）・YouTube IFrame の自前キュー・音声トグル・
+キオスク／`?debug=1` プレビューなどの内部仕様は **[`superpowers/specs/2026-05-29-signage-chime-design.md`](./superpowers/specs/2026-05-29-signage-chime-design.md)** に集約する（本書では二重記載しない）。要点のみ：
+
+- 動画は縮小パネルに YouTube IFrame Player API の自前キューを常時マウント（広告は埋め込み側で消せない・spec §5.3）
+- 音声はグローバル無音トグルのみ（既定=無音）。BGM は OS 側 Spotify、チャイムは Web Audio 合成で独立
+- キオスクは横向き・全画面。起動「タップして開始」でチャイム解放・全画面・wake lock
+- `?debug=1` のときだけ操作バー（擬似時計・稼働強制・手動チャイム）が出る。本番は無しで起動＝従来挙動と同値
+- 新規共有ロジック（`packages/shared`）: `activity-cycle.ts`（活動/休憩・チャイム時刻）・`attendance-level.ts`（にぎわい分類・定員25・occupancyRatio）・`visit-summary.ts`（`summarizeStays`）・`youtube.ts`（Data API ラッパ・Workers 安全・APIキー+fetch 直叩き）・`schemas/signage.ts`（Zod）
+
 ---
 
 ## 7. 画面仕様
 
-> 受付端末（apps/checkin・Next.js 16 / React 19 iPad PWA）と管理画面（apps/admin・Next.js 16 / React 19）の画面構成。API 呼び出しは `@tecnova/ui` の `apiFetch` を通し、レスポンスは `packages/shared/src/schemas` でアサートする。
+> 受付端末（apps/checkin・Next.js 16 / React 19 iPad PWA）・管理画面（apps/admin・Next.js 16 / React 19）・会場サイネージ（apps/signage・Next.js 16 / React 19・大型モニター/キオスク）の画面構成。API 呼び出しは `@tecnova/ui` の `apiFetch` を通し、レスポンスは `packages/shared/src/schemas` でアサートする。サイネージの放送風 UI・チャイム・動画再生の詳細は §6.4.4 のとおり別 spec に委譲する。
 
 ### 7.1 チェックインiPadアプリ（apps/checkin）
 
@@ -982,7 +1053,7 @@ iPad は受付メンターの端末。トップ画面はカメラを常時起動
 
 - GitHubアカウント
 - Cloudflareアカウント（Workers + D1用）
-- Vercelアカウント（フロント2つ用：checkin / admin）
+- Vercelアカウント（フロント3つ用：checkin / admin / signage）
 - Google Cloud Platformアカウント（Sheets API + OAuth用）
 
 ### 8.2 モノレポ構成と依存の入れ方
@@ -995,6 +1066,7 @@ pnpm workspace（`pnpm-workspace.yaml` で `apps/*` と `packages/*` を束ね�
 | `apps/api`          | `@tecnova/api`       | Hono on Cloudflare Workers。`hono` / `drizzle-orm` / `better-auth` / `@cloudflare/workers-types`（dev）/ `wrangler`（dev） |
 | `apps/checkin`      | `checkin`            | 受付端末 PWA。Next.js / React / `@zxing/browser`                        |
 | `apps/admin`        | `admin`              | 管理画面。Next.js / React                                               |
+| `apps/signage`      | `signage`            | 会場サイネージ（大型モニター/キオスク）。Next.js / React。dev ポート `3002` |
 | `packages/db`       | `@tecnova/db`        | Drizzle schema + migrations。`drizzle-orm` / `drizzle-kit`（dev）       |
 | `packages/shared`   | `@tecnova/shared`    | 型・Zodスキーマ・Sheets連携。`zod`                                      |
 | `packages/ui`       | `@tecnova/ui`        | 共通 UI（shadcn/ui）・`apiFetch` 等の API クライアント・JST フォーマッタ・`MeProvider` |
@@ -1002,7 +1074,7 @@ pnpm workspace（`pnpm-workspace.yaml` で `apps/*` と `packages/*` を束ね�
 注意点：
 
 - **`packages/auth` は存在しない。** Better Auth の設定は `apps/api/src/lib/auth.ts` の `createAuth(env)` ファクトリに集約している。Workers ではリクエスト毎に instance を生成する必要があり、Env を直接受け取れる API 側に置くのが自然なため
-- フロント 2 つ（checkin / admin）は `@tecnova/` プレフィックスを付けず `checkin` / `admin` という name にしている（`pnpm --filter <name>` で指定する）
+- フロント 3 つ（checkin / admin / signage）は `@tecnova/` プレフィックスを付けず `checkin` / `admin` / `signage` という name にしている（`pnpm --filter <name>` で指定する）
 - 新規にパッケージ・アプリを足すときは `create-hono` / `create-next-app` などの CLI を使い、`package.json` や `tsconfig.json` を手書きしない
 - 依存追加は `pnpm --filter <name> add <pkg>` で対象ワークスペースに入れる
 
@@ -1054,6 +1126,7 @@ migrations_dir = "../../packages/db/drizzle"
 
 [vars]
 BETTER_AUTH_URL = "https://api.example.workers.dev"
+# サイネージ origin（dev: http://localhost:3002 / 本番サイネージドメイン）も追加する
 TRUSTED_ORIGINS = "https://admin.example.com"
 
 # 以下はSecretsで設定（wrangler secret put）
@@ -1062,6 +1135,8 @@ TRUSTED_ORIGINS = "https://admin.example.com"
 # GOOGLE_OAUTH_CLIENT_ID
 # GOOGLE_OAUTH_CLIENT_SECRET
 # BETTER_AUTH_SECRET
+# YOUTUBE_API_KEY                ← サイネージ用 YouTube Data API v3 限定キー（サーバ呼び出し・リファラ制限なし）
+# YOUTUBE_PLAYLIST_ID            ← サイネージで再生する YouTube プレイリストID
 ```
 
 Workers コードからは `c.env.DB`（型は `D1Database`）でアクセスし、Drizzle に渡す：
@@ -1105,8 +1180,9 @@ export default defineConfig({
 #### Vercelデプロイ
 
 - GitHubリポジトリと連携
-- 各 `apps/checkin`、`apps/admin` を別プロジェクトとしてデプロイ
-- 環境変数で `NEXT_PUBLIC_API_URL` を設定
+- 各 `apps/checkin`、`apps/admin`、`apps/signage` を別プロジェクトとしてデプロイ
+- 環境変数で `NEXT_PUBLIC_API_URL` を設定（3 つとも。signage は未設定時 `http://localhost:8787` にフォールバック）
+- signage を足したら API 側 `TRUSTED_ORIGINS` にサイネージ origin（dev: `http://localhost:3002` / 本番サイネージドメイン）を追加し、Secrets に `YOUTUBE_API_KEY` / `YOUTUBE_PLAYLIST_ID` を登録する
 
 ### 8.5 Google Cloud設定
 
