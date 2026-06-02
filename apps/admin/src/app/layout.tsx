@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { LINE_Seed_JP } from 'next/font/google';
 import '@tecnova/ui/globals.css';
+import { ThemeProvider } from '@tecnova/ui/components/theme-provider';
 import { cn } from '@tecnova/ui/lib/utils';
 
 const fontSans = LINE_Seed_JP({
@@ -19,8 +20,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={cn('h-full antialiased font-sans', fontSans.variable)}>
-      <body className="min-h-full flex flex-col">{children}</body>
+    // next-themes が <html> に .dark / .light を付け替えるため suppressHydrationWarning が必要。
+    <html
+      lang="ja"
+      suppressHydrationWarning
+      className={cn('h-full antialiased font-sans', fontSans.variable)}
+    >
+      <body className="flex min-h-full flex-col">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }
