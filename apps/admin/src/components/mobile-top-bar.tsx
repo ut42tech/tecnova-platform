@@ -4,6 +4,7 @@ import { useMe } from '@tecnova/ui/components/me-provider';
 import { ThemeToggle } from '@tecnova/ui/components/theme-toggle';
 import { cn } from '@tecnova/ui/lib/utils';
 import { AccountMenu } from './account-menu';
+import { BrandLogo } from './brand-logo';
 
 // モバイル用のトップバー。左にブランド、右にテーマ切替とアカウント。
 // ページタイトルは各ページの PageHeader が担うのでここでは出さない。
@@ -18,10 +19,10 @@ export function MobileTopBar({ className }: { className?: string }) {
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-[10px] font-bold text-primary-foreground">
-          tec
+        <BrandLogo imgClassName="h-6" priority />
+        <span className="truncate text-sm font-semibold tracking-tight text-muted-foreground">
+          管理画面
         </span>
-        <span className="truncate text-sm font-bold tracking-tight">テクノバ管理画面</span>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {/* モバイルはタッチ確保のため 40px のヒットエリアにする。 */}
