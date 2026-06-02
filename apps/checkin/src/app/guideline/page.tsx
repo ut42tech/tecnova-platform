@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  IconAlertCircle,
   IconArrowLeft,
   IconBook,
   IconBottle,
@@ -33,31 +32,33 @@ import type {
   PreRegisteredListResponse,
   PreRegisteredParticipant,
 } from '@tecnova/shared/schemas';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent } from '@tecnova/ui/components/card';
 import { Checkbox } from '@tecnova/ui/components/checkbox';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
-import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
+import { apiFetch } from '@tecnova/ui/lib/api-client';
 import { cn } from '@tecnova/ui/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { type ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, Suspense, useEffect, useMemo, useState } from 'react';
 import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
+import { CheckinErrorScreen } from '@/components/screen-error';
 import { formatJapaneseDate, formatJapaneseDateTime } from '@/lib/format';
 import { popAnimate, popInitial, popTransition } from '@/lib/motion';
 
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ready'; item: PreRegisteredParticipant }
+// 取得（pre-registered 一覧）は useApiResource。ここはアクティベート POST の
+// ワークフロー状態のみ（取得状態とは分離）。
+type MutationState =
+  | { kind: 'idle' }
   | { kind: 'activating'; item: PreRegisteredParticipant }
   | { kind: 'result'; data: ActivateResponse; registeredAt: string }
-  | { kind: 'error'; message: string; item?: PreRegisteredParticipant };
+  | { kind: 'error'; message: string; item: PreRegisteredParticipant };
 
 type GuidelineTone = 'emerald' | 'sky' | 'amber' | 'rose' | 'slate';
 
@@ -396,60 +397,6 @@ function LoadingScreen() {
   );
 }
 
-function ErrorScreen({
-  title = 'ガイドラインを表示できません',
-  message,
-  item,
-  onRetry,
-}: {
-  title?: string;
-  message: string;
-  item?: PreRegisteredParticipant;
-  onRetry?: () => void;
-}) {
-  return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-rose-50 p-6 text-center">
-      <Alert variant="destructive" className="max-w-xl text-left text-lg">
-        <IconAlertCircle className="size-6" aria-hidden="true" />
-        <AlertTitle>{title}</AlertTitle>
-        <AlertDescription>{message}</AlertDescription>
-      </Alert>
-      {item ? (
-        <div className="w-full max-w-xl text-left">
-          <ParticipantDetails item={item} />
-        </div>
-      ) : null}
-      <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
-        <Button asChild size="lg" className="h-16 text-xl">
-          <Link href="/first-time">
-            <IconArrowLeft className="size-6" data-icon="inline-start" />
-            選び直す
-          </Link>
-        </Button>
-        {onRetry ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            onClick={onRetry}
-            className="h-16 text-xl"
-          >
-            <IconRefresh className="size-6" data-icon="inline-start" />
-            再読み込み
-          </Button>
-        ) : (
-          <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
-            <Link href="/">
-              <IconHome className="size-6" data-icon="inline-start" />
-              ホームに戻る
-            </Link>
-          </Button>
-        )}
-      </div>
-    </main>
-  );
-}
-
 function ActivatingScreen({ item }: { item: PreRegisteredParticipant }) {
   return (
     <PageShell className="items-center justify-center">
@@ -666,10 +613,24 @@ function GuidelineSlideView({
 function GuidelinePageContent() {
   const searchParams = useSearchParams();
   const preRegistrationId = searchParams.get('preRegistrationId') ?? '';
-  const [state, setState] = useState<State>({ kind: 'loading' });
+  const [mutation, setMutation] = useState<MutationState>({ kind: 'idle' });
   const [slideIndex, setSlideIndex] = useState(0);
   const [agreed, setAgreed] = useState(false);
   const [direction, setDirection] = useState(1);
+
+  const { state, reload } = useApiResource<PreRegisteredListResponse>('/checkin/pre-registered', {
+    enabled: !!preRegistrationId,
+  });
+
+  const item = useMemo(
+    () =>
+      state.kind === 'ok'
+        ? (state.data.participants.find(
+            (participant) => participant.preRegistrationId === preRegistrationId,
+          ) ?? null)
+        : null,
+    [state, preRegistrationId],
+  );
 
   const goPrev = () => {
     setDirection(-1);
@@ -680,42 +641,9 @@ function GuidelinePageContent() {
     setSlideIndex((index) => Math.min(GUIDELINE_SLIDES.length - 1, index + 1));
   };
 
-  const loadTarget = useCallback(async () => {
-    if (!preRegistrationId) {
-      setState({ kind: 'error', message: '登録する人を選んでください。' });
-      return;
-    }
-
-    setState({ kind: 'loading' });
-    setSlideIndex(0);
-    setAgreed(false);
-    try {
-      const r = await apiFetch('/checkin/pre-registered');
-      if (!r.ok) throw new Error(await readErrorMessage(r));
-      const data = (await r.json()) as PreRegisteredListResponse;
-      const item = data.participants.find(
-        (participant) => participant.preRegistrationId === preRegistrationId,
-      );
-      if (!item) {
-        throw new Error('この事前登録はすでに登録済み、または一覧にありません。');
-      }
-      setState({ kind: 'ready', item });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }, [preRegistrationId]);
-
-  useEffect(() => {
-    void loadTarget();
-  }, [loadTarget]);
-
   const activate = async () => {
-    if (state.kind !== 'ready') return;
-    const { item } = state;
-    setState({ kind: 'activating', item });
+    if (!item) return;
+    setMutation({ kind: 'activating', item });
     try {
       const r = await apiFetch('/checkin/activate', {
         method: 'POST',
@@ -726,13 +654,13 @@ function GuidelinePageContent() {
         const msg = 'message' in body ? body.message : `HTTP ${r.status}`;
         throw new Error(msg);
       }
-      setState({
+      setMutation({
         kind: 'result',
         data: body as ActivateResponse,
         registeredAt: item.registeredAt,
       });
     } catch (e) {
-      setState({
+      setMutation({
         kind: 'error',
         message: e instanceof Error ? e.message : String(e),
         item,
@@ -742,38 +670,45 @@ function GuidelinePageContent() {
 
   const slide = useMemo(() => GUIDELINE_SLIDES[slideIndex], [slideIndex]);
 
-  if (state.kind === 'loading') {
-    return <LoadingScreen />;
+  // ページ固有のエラー画面ボタン。選び直す（/first-time）＋ 再読み込み（一覧再取得）。
+  const retryActions = (
+    <>
+      <Button asChild size="lg" className="h-16 text-xl">
+        <Link href="/first-time">
+          <IconArrowLeft className="size-6" data-icon="inline-start" />
+          選び直す
+        </Link>
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        size="lg"
+        onClick={() => reload()}
+        className="h-16 text-xl"
+      >
+        <IconRefresh className="size-6" data-icon="inline-start" />
+        再読み込み
+      </Button>
+    </>
+  );
+
+  if (mutation.kind === 'activating') {
+    return <ActivatingScreen item={mutation.item} />;
   }
 
-  if (state.kind === 'error') {
-    return (
-      <ErrorScreen
-        title={state.item ? '登録できませんでした' : undefined}
-        message={state.message}
-        item={state.item}
-        onRetry={() => void loadTarget()}
-      />
-    );
-  }
-
-  if (state.kind === 'activating') {
-    return <ActivatingScreen item={state.item} />;
-  }
-
-  if (state.kind === 'result') {
+  if (mutation.kind === 'result') {
     return (
       <ResultSummaryCard
         title="登録できました"
         tone="emerald"
         icon={<IconCircleCheck className="size-8" />}
         rows={[
-          { label: 'ID', value: state.data.participantId, valueClassName: 'tabular-nums' },
-          { label: '氏名', value: state.data.fullName },
-          { label: 'ニックネーム', value: state.data.nickname },
-          { label: '学年', value: state.data.grade },
-          { label: '初回チェックイン', value: formatJapaneseDateTime(state.data.checkedInAt) },
-          { label: '事前登録日', value: formatJapaneseDate(state.registeredAt) },
+          { label: 'ID', value: mutation.data.participantId, valueClassName: 'tabular-nums' },
+          { label: '氏名', value: mutation.data.fullName },
+          { label: 'ニックネーム', value: mutation.data.nickname },
+          { label: '学年', value: mutation.data.grade },
+          { label: '初回チェックイン', value: formatJapaneseDateTime(mutation.data.checkedInAt) },
+          { label: '事前登録日', value: formatJapaneseDate(mutation.registeredAt) },
         ]}
         note="表示されたIDでカードを作ってください"
         footer={
@@ -788,15 +723,83 @@ function GuidelinePageContent() {
     );
   }
 
+  if (mutation.kind === 'error') {
+    return (
+      <CheckinErrorScreen
+        title="登録できませんでした"
+        message={mutation.message}
+        footer={
+          <div className="w-full max-w-xl text-left">
+            <ParticipantDetails item={mutation.item} />
+          </div>
+        }
+        actions={retryActions}
+      />
+    );
+  }
+
+  if (!preRegistrationId) {
+    return (
+      <CheckinErrorScreen
+        title="ガイドラインを表示できません"
+        message="登録する人を選んでください。"
+        actions={
+          <>
+            <Button asChild size="lg" className="h-16 text-xl">
+              <Link href="/first-time">
+                <IconArrowLeft className="size-6" data-icon="inline-start" />
+                選び直す
+              </Link>
+            </Button>
+            <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
+              <Link href="/">
+                <IconHome className="size-6" data-icon="inline-start" />
+                ホームに戻る
+              </Link>
+            </Button>
+          </>
+        }
+      />
+    );
+  }
+
+  if (state.kind === 'loading' || state.kind === 'idle') {
+    return <LoadingScreen />;
+  }
+
+  if (state.kind === 'error') {
+    return (
+      <CheckinErrorScreen
+        title="ガイドラインを表示できません"
+        message={state.message}
+        actions={retryActions}
+      />
+    );
+  }
+
+  if (!item) {
+    return (
+      <CheckinErrorScreen
+        title="ガイドラインを表示できません"
+        message="この事前登録はすでに登録済み、または一覧にありません。"
+        actions={retryActions}
+      />
+    );
+  }
+
   if (!slide) {
     return (
-      <ErrorScreen message="ガイドラインを表示できません。" onRetry={() => void loadTarget()} />
+      <CheckinErrorScreen
+        title="ガイドラインを表示できません"
+        message="ガイドラインを表示できません。"
+        actions={retryActions}
+      />
     );
   }
 
   return (
     <GuidelineSlideView
-      item={state.item}
+      item={item}
       slide={slide}
       current={slideIndex + 1}
       total={GUIDELINE_SLIDES.length}
