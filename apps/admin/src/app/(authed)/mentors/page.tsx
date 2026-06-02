@@ -78,7 +78,7 @@ export default function MentorsPage() {
         </Reveal>
 
         <Reveal index={1}>
-          <CreateMentorForm onCreated={reload} />
+          <CreateMentorForm onCreated={() => reload({ background: true })} />
         </Reveal>
 
         {/* データ領域。Reveal を常時マウントして入場は一度だけ（再フェッチで再生されない）。
@@ -110,7 +110,12 @@ export default function MentorsPage() {
                   保存すれば再取得で両者が同期するため許容するトレードオフ。 */}
                 <div className="flex flex-col gap-3 md:hidden">
                   {state.data.mentors.map((m) => (
-                    <MentorRow key={m.id} mentor={m} onUpdated={reload} variant="card" />
+                    <MentorRow
+                      key={m.id}
+                      mentor={m}
+                      onUpdated={() => reload({ background: true })}
+                      variant="card"
+                    />
                   ))}
                 </div>
 
@@ -130,7 +135,12 @@ export default function MentorsPage() {
                     </TableHeader>
                     <TableBody>
                       {state.data.mentors.map((m) => (
-                        <MentorRow key={m.id} mentor={m} onUpdated={reload} variant="row" />
+                        <MentorRow
+                          key={m.id}
+                          mentor={m}
+                          onUpdated={() => reload({ background: true })}
+                          variant="row"
+                        />
                       ))}
                     </TableBody>
                   </Table>
