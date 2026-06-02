@@ -44,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@tecnova/ui/components/select';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
 import {
   Table,
   TableBody,
@@ -57,6 +58,7 @@ import { ApiError, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
 import { toastError, toastSuccess } from '@tecnova/ui/lib/toast';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
+import { RecordCard, RecordField } from '@/components/record-card';
 
 type State =
   | { kind: 'loading' }
@@ -122,7 +124,18 @@ export default function PreRegistrationsPage() {
 
       <CreatePreRegistrationForm onCreated={load} />
 
-      {state.kind === 'loading' && <TableSkeleton columns={6} rows={8} />}
+      {state.kind === 'loading' && (
+        <>
+          <div className="hidden md:block">
+            <TableSkeleton columns={6} rows={8} />
+          </div>
+          <div className="flex flex-col gap-3 md:hidden">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-36 w-full" />
+            ))}
+          </div>
+        </>
+      )}
       {state.kind === 'error' && (
         <Alert variant="destructive">
           <AlertTitle>読み込めませんでした</AlertTitle>
@@ -132,33 +145,51 @@ export default function PreRegistrationsPage() {
 
       {state.kind === 'ok' && (
         <>
-          <Card className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>事前登録ID</TableHead>
-                  <TableHead>氏名</TableHead>
-                  <TableHead>ニックネーム</TableHead>
-                  <TableHead>学年</TableHead>
-                  <TableHead>事前登録日</TableHead>
-                  <TableHead>操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {state.preRegistrations.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="py-10 text-center text-muted-foreground" colSpan={6}>
-                      ID未発行の事前登録はありません
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  state.preRegistrations.map((p) => (
-                    <PreRegistrationRow key={p.preRegistrationId} item={p} onDeleted={load} />
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </Card>
+          {state.preRegistrations.length === 0 ? (
+            <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+              ID未発行の事前登録はありません
+            </div>
+          ) : (
+            <>
+              {/* モバイル: カードリスト */}
+              <div className="flex flex-col gap-3 md:hidden">
+                {state.preRegistrations.map((p) => (
+                  <PreRegistrationRow
+                    key={p.preRegistrationId}
+                    item={p}
+                    onDeleted={load}
+                    variant="card"
+                  />
+                ))}
+              </div>
+
+              {/* デスクトップ: テーブル */}
+              <Card className="hidden p-0 md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>事前登録ID</TableHead>
+                      <TableHead>氏名</TableHead>
+                      <TableHead>ニックネーム</TableHead>
+                      <TableHead>学年</TableHead>
+                      <TableHead>事前登録日</TableHead>
+                      <TableHead>操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {state.preRegistrations.map((p) => (
+                      <PreRegistrationRow
+                        key={p.preRegistrationId}
+                        item={p}
+                        onDeleted={load}
+                        variant="row"
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </>
+          )}
 
           <ActivatedPreRegistrationsTable items={state.activatedPreRegistrations} />
         </>
@@ -186,40 +217,73 @@ function ActivatedPreRegistrationsTable({ items }: { items: ActivatedPreRegistra
           </CollapsibleTrigger>
         </div>
         <CollapsibleContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>事前登録ID</TableHead>
-                <TableHead>本登録ID</TableHead>
-                <TableHead>氏名</TableHead>
-                <TableHead>ニックネーム</TableHead>
-                <TableHead>学年</TableHead>
-                <TableHead>事前登録日</TableHead>
-                <TableHead>ID発行日時</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.length === 0 ? (
+          {/* モバイル: カードリスト */}
+          <div className="flex flex-col gap-3 p-4 md:hidden">
+            {items.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                ID発行済みの利用者はありません
+              </p>
+            ) : (
+              items.map((item) => (
+                <RecordCard key={item.preRegistrationId}>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{item.nickname}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {item.fullName}・{item.grade}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    <RecordField label="事前登録ID">
+                      <span className="font-mono text-xs">{item.preRegistrationId}</span>
+                    </RecordField>
+                    <RecordField label="本登録ID">
+                      <span className="font-mono text-xs">{item.internalId || '-'}</span>
+                    </RecordField>
+                    <RecordField label="事前登録日">{item.registeredAt}</RecordField>
+                    <RecordField label="ID発行日時">{item.activatedAt || '-'}</RecordField>
+                  </div>
+                </RecordCard>
+              ))
+            )}
+          </div>
+
+          {/* デスクトップ: テーブル */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell className="py-10 text-center text-muted-foreground" colSpan={7}>
-                    ID発行済みの利用者はありません
-                  </TableCell>
+                  <TableHead>事前登録ID</TableHead>
+                  <TableHead>本登録ID</TableHead>
+                  <TableHead>氏名</TableHead>
+                  <TableHead>ニックネーム</TableHead>
+                  <TableHead>学年</TableHead>
+                  <TableHead>事前登録日</TableHead>
+                  <TableHead>ID発行日時</TableHead>
                 </TableRow>
-              ) : (
-                items.map((item) => (
-                  <TableRow key={item.preRegistrationId} className="align-top">
-                    <TableCell className="font-mono">{item.preRegistrationId}</TableCell>
-                    <TableCell className="font-mono">{item.internalId || '-'}</TableCell>
-                    <TableCell>{item.fullName}</TableCell>
-                    <TableCell>{item.nickname}</TableCell>
-                    <TableCell>{item.grade}</TableCell>
-                    <TableCell>{item.registeredAt}</TableCell>
-                    <TableCell>{item.activatedAt || '-'}</TableCell>
+              </TableHeader>
+              <TableBody>
+                {items.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="py-10 text-center text-muted-foreground" colSpan={7}>
+                      ID発行済みの利用者はありません
+                    </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  items.map((item) => (
+                    <TableRow key={item.preRegistrationId} className="align-top">
+                      <TableCell className="font-mono">{item.preRegistrationId}</TableCell>
+                      <TableCell className="font-mono">{item.internalId || '-'}</TableCell>
+                      <TableCell>{item.fullName}</TableCell>
+                      <TableCell>{item.nickname}</TableCell>
+                      <TableCell>{item.grade}</TableCell>
+                      <TableCell>{item.registeredAt}</TableCell>
+                      <TableCell>{item.activatedAt || '-'}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CollapsibleContent>
       </Card>
     </Collapsible>
@@ -334,9 +398,12 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
 function PreRegistrationRow({
   item,
   onDeleted,
+  variant,
 }: {
   item: PreRegistrationItem;
   onDeleted: () => Promise<void>;
+  // 'row' = デスクトップのテーブル行 / 'card' = モバイルのカード
+  variant: 'row' | 'card';
 }) {
   const [busy, setBusy] = useState(false);
   const deleteDescription = `${item.preRegistrationId}（${item.fullName} / ${item.nickname}）を削除します。この操作は取り消せません。`;
@@ -365,6 +432,50 @@ function PreRegistrationRow({
     }
   };
 
+  const deleteButton = (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button type="button" variant="destructive" size="xs" disabled={busy}>
+          {busy ? '削除中...' : '削除'}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>事前登録を削除しますか？</AlertDialogTitle>
+          <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>キャンセル</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={remove} disabled={busy}>
+            削除
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (variant === 'card') {
+    return (
+      <RecordCard>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{item.nickname}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {item.fullName}・{item.grade}
+            </p>
+          </div>
+          {deleteButton}
+        </div>
+        <div className="mt-3 flex flex-col gap-2">
+          <RecordField label="事前登録ID">
+            <span className="font-mono text-xs">{item.preRegistrationId}</span>
+          </RecordField>
+          <RecordField label="事前登録日">{item.registeredAt}</RecordField>
+        </div>
+      </RecordCard>
+    );
+  }
+
   return (
     <TableRow className="align-top">
       <TableCell className="font-mono">{item.preRegistrationId}</TableCell>
@@ -372,27 +483,7 @@ function PreRegistrationRow({
       <TableCell>{item.nickname}</TableCell>
       <TableCell>{item.grade}</TableCell>
       <TableCell>{item.registeredAt}</TableCell>
-      <TableCell>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button type="button" variant="destructive" size="xs" disabled={busy}>
-              {busy ? '削除中...' : '削除'}
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>事前登録を削除しますか？</AlertDialogTitle>
-              <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>キャンセル</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={remove} disabled={busy}>
-                削除
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </TableCell>
+      <TableCell>{deleteButton}</TableCell>
     </TableRow>
   );
 }

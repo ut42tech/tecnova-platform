@@ -41,9 +41,12 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-1 items-center justify-center bg-muted/30 p-4">
+    <main className="flex min-h-svh flex-1 items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-lg">
         <CardHeader className="gap-2">
+          <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-sm font-bold tracking-tight text-primary-foreground">
+            tec
+          </span>
           <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
             テクノバながさき 運営管理
           </p>

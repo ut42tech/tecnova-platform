@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@tecnova/ui/components/select';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
 import {
   Table,
   TableBody,
@@ -28,6 +29,7 @@ import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
+import { RecordCard, RecordField } from '@/components/record-card';
 
 type State =
   | { kind: 'loading' }
@@ -99,7 +101,7 @@ export default function ParticipantsPage() {
       <PageHeader title="利用者一覧" description="ID発行済みの利用者を検索・フィルタできます" />
 
       <section className="flex flex-wrap items-end gap-3">
-        <div className="relative max-w-xs flex-1">
+        <div className="relative w-full sm:max-w-xs sm:flex-1">
           <IconSearch
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden
@@ -151,7 +153,18 @@ export default function ParticipantsPage() {
         </Select>
       </section>
 
-      {state.kind === 'loading' && <TableSkeleton columns={6} rows={10} />}
+      {state.kind === 'loading' && (
+        <>
+          <div className="hidden md:block">
+            <TableSkeleton columns={6} rows={10} />
+          </div>
+          <div className="flex flex-col gap-3 md:hidden">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+        </>
+      )}
 
       {state.kind === 'error' && (
         <Alert variant="destructive">
@@ -162,7 +175,43 @@ export default function ParticipantsPage() {
 
       {state.kind === 'ok' && (
         <>
-          <Card className="p-0">
+          {/* モバイル: カードリスト */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {state.data.participants.length === 0 ? (
+              <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+                該当する利用者が見つかりません
+              </div>
+            ) : (
+              state.data.participants.map((p) => (
+                <RecordCard
+                  key={p.id}
+                  onClick={() => setSelectedParticipantId(p.id)}
+                  ariaLabel={`${p.nickname} の詳細を開く`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{p.nickname}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {p.fullName}・{p.grade}
+                      </p>
+                    </div>
+                    <Badge variant={p.active ? 'default' : 'secondary'}>
+                      {p.active ? '有効' : '無効'}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    <RecordField label="ID">
+                      <span className="font-mono text-xs">{p.id}</span>
+                    </RecordField>
+                    <RecordField label="ID発行日">{formatJstDate(p.activatedAt)}</RecordField>
+                  </div>
+                </RecordCard>
+              ))
+            )}
+          </div>
+
+          {/* デスクトップ: テーブル */}
+          <Card className="hidden p-0 md:block">
             <Table>
               <TableHeader>
                 <TableRow>

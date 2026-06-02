@@ -35,6 +35,7 @@ import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
+import { RecordCard, RecordField } from '@/components/record-card';
 
 type SessionsState =
   | { kind: 'loading' }
@@ -153,12 +154,19 @@ function DashboardBody({
   if (sessions.kind === 'loading') {
     return (
       <>
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid grid-cols-3 gap-3 md:gap-4">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </section>
-        <TableSkeleton columns={8} rows={6} />
+        <div className="hidden md:block">
+          <TableSkeleton columns={8} rows={6} />
+        </div>
+        <div className="flex flex-col gap-3 md:hidden">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-28 w-full" />
+          ))}
+        </div>
       </>
     );
   }
@@ -176,7 +184,7 @@ function DashboardBody({
 
   return (
     <>
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-3 gap-3 md:gap-4">
         <SummaryCard label="現在の来場者数" value={summary.currentlyPresent} Icon={IconUserCheck} />
         <SummaryCard
           label="今日の総チェックイン"
@@ -186,7 +194,52 @@ function DashboardBody({
         <SummaryCard label="チェックアウト済" value={summary.checkedOut} Icon={IconLogout2} />
       </section>
 
-      <Card className="p-0">
+      {/* モバイル: カードリスト */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {rows.length === 0 ? (
+          <EmptySessions hasEvent={event !== null} />
+        ) : (
+          rows.map((s) => (
+            <RecordCard
+              key={s.sessionId}
+              onClick={() => onSelectParticipant(s.participantId)}
+              ariaLabel={`${s.nickname} の詳細を開く`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{s.nickname}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {s.fullName}・{s.grade}
+                  </p>
+                </div>
+                <Badge variant={s.isPresent ? 'default' : 'secondary'}>
+                  {s.isPresent ? '来場中' : '退出済'}
+                </Badge>
+              </div>
+              <div className="mt-3 flex flex-col gap-2">
+                {s.term && (
+                  <RecordField label="ターム">
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                      <TermBadge term={s.term} counted={s.counted} />
+                      {!s.counted && <UncountedBadge />}
+                    </span>
+                  </RecordField>
+                )}
+                <RecordField label="チェックイン">{fmtTime(s.checkedInAt)}</RecordField>
+                <RecordField label="チェックアウト">
+                  {s.checkedOutAt ? fmtTime(s.checkedOutAt) : '—'}
+                </RecordField>
+                <RecordField label="ID">
+                  <span className="font-mono text-xs">{s.participantId}</span>
+                </RecordField>
+              </div>
+            </RecordCard>
+          ))
+        )}
+      </div>
+
+      {/* デスクトップ: テーブル */}
+      <Card className="hidden p-0 md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -252,6 +305,19 @@ function DashboardBody({
   );
 }
 
+function EmptySessions({ hasEvent }: { hasEvent: boolean }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-2xl border bg-card py-10 text-muted-foreground">
+      <IconCalendarOff className="size-8" />
+      <span className="px-4 text-center text-sm">
+        {hasEvent
+          ? 'このイベントのセッションはまだありません'
+          : 'この日のイベントはまだ作成されていません'}
+      </span>
+    </div>
+  );
+}
+
 function SummaryCard({
   label,
   value,
@@ -263,12 +329,14 @@ function SummaryCard({
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <Icon className="size-5 text-muted-foreground" />
+      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
+        <CardTitle className="text-xs leading-tight font-medium text-muted-foreground sm:text-sm">
+          {label}
+        </CardTitle>
+        <Icon className="size-5 shrink-0 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-bold">{value}</div>
+        <div className="text-2xl font-bold sm:text-3xl">{value}</div>
       </CardContent>
     </Card>
   );

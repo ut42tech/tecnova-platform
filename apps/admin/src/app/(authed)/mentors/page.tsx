@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@tecnova/ui/components/select';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
 import {
   Table,
   TableBody,
@@ -41,6 +42,7 @@ import { toastError, toastSuccess } from '@tecnova/ui/lib/toast';
 import { cn } from '@tecnova/ui/lib/utils';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
+import { RecordCard, RecordField } from '@/components/record-card';
 
 type State =
   | { kind: 'loading' }
@@ -91,7 +93,18 @@ export default function MentorsPage() {
 
         <CreateMentorForm onCreated={load} />
 
-        {state.kind === 'loading' && <TableSkeleton columns={7} rows={5} />}
+        {state.kind === 'loading' && (
+          <>
+            <div className="hidden md:block">
+              <TableSkeleton columns={7} rows={5} />
+            </div>
+            <div className="flex flex-col gap-3 md:hidden">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-44 w-full" />
+              ))}
+            </div>
+          </>
+        )}
         {state.kind === 'error' && (
           <Alert variant="destructive">
             <AlertTitle>読み込めませんでした</AlertTitle>
@@ -99,34 +112,43 @@ export default function MentorsPage() {
           </Alert>
         )}
 
-        {state.kind === 'ok' && (
-          <Card className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>メールアドレス</TableHead>
-                  <TableHead>名前</TableHead>
-                  <TableHead>ロール</TableHead>
-                  <TableHead>状態</TableHead>
-                  <TableHead>登録日</TableHead>
-                  <TableHead>最終ログイン</TableHead>
-                  <TableHead>操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {state.mentors.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="py-10 text-center text-muted-foreground" colSpan={7}>
-                      まだ管理者が登録されていません
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  state.mentors.map((m) => <MentorRow key={m.id} mentor={m} onUpdated={load} />)
-                )}
-              </TableBody>
-            </Table>
-          </Card>
-        )}
+        {state.kind === 'ok' &&
+          (state.mentors.length === 0 ? (
+            <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+              まだ管理者が登録されていません
+            </div>
+          ) : (
+            <>
+              {/* モバイル: カードリスト */}
+              <div className="flex flex-col gap-3 md:hidden">
+                {state.mentors.map((m) => (
+                  <MentorRow key={m.id} mentor={m} onUpdated={load} variant="card" />
+                ))}
+              </div>
+
+              {/* デスクトップ: テーブル */}
+              <Card className="hidden p-0 md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>メールアドレス</TableHead>
+                      <TableHead>名前</TableHead>
+                      <TableHead>ロール</TableHead>
+                      <TableHead>状態</TableHead>
+                      <TableHead>登録日</TableHead>
+                      <TableHead>最終ログイン</TableHead>
+                      <TableHead>操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {state.mentors.map((m) => (
+                      <MentorRow key={m.id} mentor={m} onUpdated={load} variant="row" />
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </>
+          ))}
       </main>
     </TooltipProvider>
   );
@@ -207,7 +229,16 @@ function CreateMentorForm({ onCreated }: { onCreated: () => Promise<void> }) {
   );
 }
 
-function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () => Promise<void> }) {
+function MentorRow({
+  mentor,
+  onUpdated,
+  variant,
+}: {
+  mentor: MentorItem;
+  onUpdated: () => Promise<void>;
+  // 'row' = デスクトップのテーブル行 / 'card' = モバイルのカード
+  variant: 'row' | 'card';
+}) {
   const me = useMe();
   const [role, setRole] = useState(mentor.role);
   const [active, setActive] = useState(mentor.active);
@@ -216,7 +247,7 @@ function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () =>
   const dirty = role !== mentor.role || active !== mentor.active;
   // 自分自身のロール降格 / 無効化は禁止（最後の admin が自分を外して詰むのを避ける）
   const isSelf = mentor.id === me.mentor.id;
-  const activeId = `mentor-active-${mentor.id}`;
+  const activeId = `mentor-active-${variant}-${mentor.id}`;
 
   const save = async () => {
     if (!dirty || busy) return;
@@ -248,49 +279,74 @@ function MentorRow({ mentor, onUpdated }: { mentor: MentorItem; onUpdated: () =>
       node
     );
 
+  // 操作系 UI（ロール選択・有効チェック・保存）。テーブル行とカードで共有する。
+  const roleControl = wrapSelfReadonly(
+    <Select
+      value={role}
+      onValueChange={(value) => setRole(value as 'admin' | 'mentor')}
+      disabled={isSelf || busy}
+    >
+      <SelectTrigger size="sm" className="w-28">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="mentor">mentor</SelectItem>
+        <SelectItem value="admin">admin</SelectItem>
+      </SelectContent>
+    </Select>,
+  );
+
+  const activeControl = wrapSelfReadonly(
+    <Label htmlFor={activeId} className="inline-flex">
+      <Checkbox
+        id={activeId}
+        checked={active}
+        onCheckedChange={(checked) => setActive(checked === true)}
+        disabled={isSelf || busy}
+      />
+      有効
+    </Label>,
+  );
+
+  const saveControl = wrapSelfReadonly(
+    <Button type="button" size="xs" onClick={save} disabled={!dirty || busy || isSelf}>
+      {busy ? '保存中...' : '保存'}
+    </Button>,
+  );
+
+  if (variant === 'card') {
+    return (
+      <RecordCard className={cn(!mentor.active && 'opacity-60')}>
+        <div className="min-w-0">
+          <p className="truncate font-medium">{mentor.name}</p>
+          <p className="truncate text-xs text-muted-foreground">{mentor.email}</p>
+        </div>
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">ロール</span>
+            {roleControl}
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">状態</span>
+            {activeControl}
+          </div>
+          <RecordField label="登録日">{formatJstDate(mentor.createdAt)}</RecordField>
+          <RecordField label="最終ログイン">{formatJstDate(mentor.lastLoginAt)}</RecordField>
+          <div className="flex justify-end pt-1">{saveControl}</div>
+        </div>
+      </RecordCard>
+    );
+  }
+
   return (
     <TableRow className={cn('align-top', !mentor.active && 'opacity-60')}>
       <TableCell>{mentor.email}</TableCell>
       <TableCell>{mentor.name}</TableCell>
-      <TableCell>
-        {wrapSelfReadonly(
-          <Select
-            value={role}
-            onValueChange={(value) => setRole(value as 'admin' | 'mentor')}
-            disabled={isSelf || busy}
-          >
-            <SelectTrigger size="sm" className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mentor">mentor</SelectItem>
-              <SelectItem value="admin">admin</SelectItem>
-            </SelectContent>
-          </Select>,
-        )}
-      </TableCell>
-      <TableCell>
-        {wrapSelfReadonly(
-          <Label htmlFor={activeId} className="inline-flex">
-            <Checkbox
-              id={activeId}
-              checked={active}
-              onCheckedChange={(checked) => setActive(checked === true)}
-              disabled={isSelf || busy}
-            />
-            有効
-          </Label>,
-        )}
-      </TableCell>
+      <TableCell>{roleControl}</TableCell>
+      <TableCell>{activeControl}</TableCell>
       <TableCell>{formatJstDate(mentor.createdAt)}</TableCell>
       <TableCell>{formatJstDate(mentor.lastLoginAt)}</TableCell>
-      <TableCell>
-        {wrapSelfReadonly(
-          <Button type="button" size="xs" onClick={save} disabled={!dirty || busy || isSelf}>
-            {busy ? '保存中...' : '保存'}
-          </Button>,
-        )}
-      </TableCell>
+      <TableCell>{saveControl}</TableCell>
     </TableRow>
   );
 }
