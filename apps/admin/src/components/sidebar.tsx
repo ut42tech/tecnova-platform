@@ -46,12 +46,12 @@ export function Sidebar({ className }: { className?: string }) {
                   ボトムナビと同じく light=primary / dark=sidebar-primary を使う（どちらも AA 達成）。 */}
               {active &&
                 (prefersReduced ? (
-                  <span className="absolute inset-0 rounded-md bg-primary dark:bg-sidebar-primary" />
+                  <span className="absolute inset-0 rounded-4xl bg-primary dark:bg-sidebar-primary" />
                 ) : (
                   <motion.span
                     layoutId="sidebar-active-pill"
                     transition={navIndicatorTransition}
-                    className="absolute inset-0 rounded-md bg-primary dark:bg-sidebar-primary"
+                    className="absolute inset-0 rounded-4xl bg-primary dark:bg-sidebar-primary"
                   />
                 ))}
               <Button
