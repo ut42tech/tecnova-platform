@@ -15,7 +15,7 @@ import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardDescription, CardFooter } from '@tecnova/ui/components/card';
 import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
-import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
+import { type ResourceState, useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { cn } from '@tecnova/ui/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useRouter } from 'next/navigation';
@@ -115,32 +115,10 @@ function IdEntryPanel() {
   );
 }
 
-type SearchState =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'ok'; results: ParticipantSearchResponse['participants'] }
-  | { kind: 'error'; message: string };
-
-const searchParticipants = async (
-  query: string,
-  signal: AbortSignal,
-): Promise<ParticipantSearchResponse> => {
-  const params = new URLSearchParams({ q: query });
-  const response = await apiFetch(`/checkin/participants/search?${params.toString()}`, {
-    cache: 'no-store',
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-  return (await response.json()) as ParticipantSearchResponse;
-};
-
 function NameSearchPanel() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [state, setState] = useState<SearchState>({ kind: 'idle' });
   const [navigatingId, setNavigatingId] = useState<string | null>(null);
 
   // 入力のたびに API を叩かないよう 300ms デバウンス。
@@ -149,27 +127,12 @@ function NameSearchPanel() {
     return () => clearTimeout(id);
   }, [query]);
 
-  useEffect(() => {
-    if (!debouncedQuery) {
-      setState({ kind: 'idle' });
-      return;
-    }
-    const controller = new AbortController();
-    setState({ kind: 'loading' });
-    void (async () => {
-      try {
-        const data = await searchParticipants(debouncedQuery, controller.signal);
-        setState({ kind: 'ok', results: data.participants });
-      } catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError') return;
-        setState({
-          kind: 'error',
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
-    })();
-    return () => controller.abort();
-  }, [debouncedQuery]);
+  // debouncedQuery が空なら path=null → フックは idle のまま。
+  // path が変わるとフックが自動で再取得し、古いレスポンスは cancelled フラグで破棄。
+  const searchPath = debouncedQuery
+    ? `/checkin/participants/search?${new URLSearchParams({ q: debouncedQuery }).toString()}`
+    : null;
+  const { state } = useApiResource<ParticipantSearchResponse>(searchPath);
 
   const handleSelect = (participantId: string) => {
     if (navigatingId) return;
@@ -213,7 +176,7 @@ function SearchResults({
   onSelect,
 }: {
   query: string;
-  state: SearchState;
+  state: ResourceState<ParticipantSearchResponse>;
   navigatingId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -248,7 +211,7 @@ function SearchResults({
     );
   }
 
-  if (state.results.length === 0) {
+  if (state.data.participants.length === 0) {
     return (
       <p className="rounded-lg border border-dashed bg-white px-5 py-8 text-center text-base text-muted-foreground">
         「{query}」に一致する参加者が見つかりませんでした
@@ -259,10 +222,10 @@ function SearchResults({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm font-bold text-muted-foreground">
-        {state.results.length}件の候補（タップして開く）
+        {state.data.participants.length}件の候補（タップして開く）
       </p>
       <ul className="flex max-h-[60vh] list-none flex-col gap-2 overflow-y-auto p-0">
-        {state.results.map((participant, index) => (
+        {state.data.participants.map((participant, index) => (
           <motion.li
             key={participant.id}
             initial={prefersReduced ? false : { opacity: 0, y: 8 }}

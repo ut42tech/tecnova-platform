@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  IconAlertCircle,
   IconArrowBack,
   IconAward,
   IconCalendarEvent,
@@ -20,7 +19,6 @@ import {
 } from '@tabler/icons-react';
 import type { ParticipantProfileResponse, ScanResponse } from '@tecnova/shared/schemas';
 import { TERM_LABELS } from '@tecnova/shared/venue-schedule';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
@@ -34,14 +32,16 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState, ViewTransition } from 'react';
+import { useCallback, useMemo, useState, ViewTransition } from 'react';
 import { AnimatedNumber } from '@/components/animated-number';
 import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
+import { CheckinErrorScreen } from '@/components/screen-error';
 import {
   formatDuration,
   formatJapaneseDateFromIso,
@@ -50,24 +50,12 @@ import {
 } from '@/lib/format';
 import { PARTICIPANT_ID_PATTERN } from '@/lib/participant-id';
 
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ready'; profile: ParticipantProfileResponse }
-  | { kind: 'submitting'; profile: ParticipantProfileResponse }
+// 取得は useApiResource に委譲。ここでは出退場 POST の進行状態だけを持つ。
+type Action =
+  | { kind: 'idle' }
+  | { kind: 'submitting' }
   | { kind: 'result'; data: ScanResponse }
   | { kind: 'error'; message: string };
-
-const fetchParticipantProfile = async (
-  participantId: string,
-): Promise<ParticipantProfileResponse> => {
-  const response = await apiFetch(`/checkin/participants/${participantId}`, {
-    cache: 'no-store',
-  });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-  return (await response.json()) as ParticipantProfileResponse;
-};
 
 const postAttendance = async (participantId: string): Promise<ScanResponse> => {
   const response = await apiFetch(`/checkin/participants/${participantId}/attendance`, {
@@ -167,59 +155,22 @@ function LoadingScreen() {
   );
 }
 
-function ErrorScreen({ message, participantId }: { message: string; participantId: string }) {
-  return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-rose-50 p-6 text-center">
-      <Alert variant="destructive" className="max-w-xl text-left text-lg">
-        <IconAlertCircle className="size-6" aria-hidden="true" />
-        <AlertTitle>参加者を表示できません</AlertTitle>
-        <AlertDescription>{message}</AlertDescription>
-      </Alert>
-      <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
-        <Button asChild size="lg" className="h-16 text-xl">
-          <Link href="/">
-            <IconHome className="size-6" data-icon="inline-start" />
-            ホームに戻る
-          </Link>
-        </Button>
-        <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
-          <Link href="/manual">
-            <IconArrowBack className="size-6" data-icon="inline-start" />
-            入力し直す
-          </Link>
-        </Button>
-      </div>
-      <p className="text-base font-bold text-rose-900/70 tabular-nums">ID {participantId}</p>
-    </main>
-  );
-}
-
 export default function ReceptionParticipantPage() {
   const params = useParams<{ id: string }>();
   const participantId = String(params.id ?? '');
-  const [state, setState] = useState<State>({ kind: 'loading' });
   const prefersReduced = useReducedMotion();
 
-  const loadProfile = useCallback(async () => {
-    if (!PARTICIPANT_ID_PATTERN.test(participantId)) {
-      setState({ kind: 'error', message: '5桁の参加者IDを入力してください' });
-      return;
-    }
-    setState({ kind: 'loading' });
-    try {
-      const profile = await fetchParticipantProfile(participantId);
-      setState({ kind: 'ready', profile });
-    } catch (e) {
-      setState({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
-    }
-  }, [participantId]);
+  // 5桁ID以外はそもそも取得しない（取得前のローカル検証エラー）。
+  const isValidId = PARTICIPANT_ID_PATTERN.test(participantId);
+  const { state } = useApiResource<ParticipantProfileResponse>(
+    `/checkin/participants/${participantId}`,
+    { enabled: isValidId },
+  );
 
-  useEffect(() => {
-    void loadProfile();
-  }, [loadProfile]);
+  const [action, setAction] = useState<Action>({ kind: 'idle' });
 
-  const profile = state.kind === 'ready' || state.kind === 'submitting' ? state.profile : null;
-  const isSubmitting = state.kind === 'submitting';
+  const profile = state.kind === 'ok' ? state.data : null;
+  const isSubmitting = action.kind === 'submitting';
   const nextAction = profile?.current.nextAction ?? 'check_in';
   const isCheckIn = nextAction === 'check_in';
 
@@ -313,25 +264,38 @@ export default function ReceptionParticipantPage() {
 
   const submitAttendance = async () => {
     if (!profile) return;
-    setState({ kind: 'submitting', profile });
+    setAction({ kind: 'submitting' });
     try {
       const data = await postAttendance(profile.participant.id);
-      setState({ kind: 'result', data });
+      setAction({ kind: 'result', data });
     } catch (e) {
-      setState({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+      setAction({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
     }
   };
 
-  if (state.kind === 'loading') {
-    return <LoadingScreen />;
-  }
+  // エラー画面で共有するボタン群と ID 行。invalid-ID / POST error / fetch error で使い回す。
+  const errorActions = (
+    <>
+      <Button asChild size="lg" className="h-16 text-xl">
+        <Link href="/">
+          <IconHome className="size-6" data-icon="inline-start" />
+          ホームに戻る
+        </Link>
+      </Button>
+      <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
+        <Link href="/manual">
+          <IconArrowBack className="size-6" data-icon="inline-start" />
+          入力し直す
+        </Link>
+      </Button>
+    </>
+  );
+  const errorIdFooter = (
+    <p className="text-base font-bold text-rose-900/70 tabular-nums">ID {participantId}</p>
+  );
 
-  if (state.kind === 'error') {
-    return <ErrorScreen message={state.message} participantId={participantId} />;
-  }
-
-  if (state.kind === 'result') {
-    const data = state.data;
+  if (action.kind === 'result') {
+    const data = action.data;
     const didCheckIn = data.action === 'check_in';
     const resultRows =
       data.action === 'check_in'
@@ -363,6 +327,43 @@ export default function ReceptionParticipantPage() {
             </Link>
           </Button>
         }
+      />
+    );
+  }
+
+  if (!isValidId) {
+    return (
+      <CheckinErrorScreen
+        title="参加者を表示できません"
+        message="5桁の参加者IDを入力してください"
+        footer={errorIdFooter}
+        actions={errorActions}
+      />
+    );
+  }
+
+  if (action.kind === 'error') {
+    return (
+      <CheckinErrorScreen
+        title="参加者を表示できません"
+        message={action.message}
+        footer={errorIdFooter}
+        actions={errorActions}
+      />
+    );
+  }
+
+  if (state.kind === 'loading' || state.kind === 'idle') {
+    return <LoadingScreen />;
+  }
+
+  if (state.kind === 'error') {
+    return (
+      <CheckinErrorScreen
+        title="参加者を表示できません"
+        message={state.message}
+        footer={errorIdFooter}
+        actions={errorActions}
       />
     );
   }

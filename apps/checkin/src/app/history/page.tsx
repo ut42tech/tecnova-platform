@@ -42,15 +42,17 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
 import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatedNumber } from '@/components/animated-number';
 import { LiveDot } from '@/components/live-dot';
 import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
 import { Reveal } from '@/components/reveal';
+import { CheckinErrorScreen } from '@/components/screen-error';
 import { StatTile } from '@/components/stat-tile';
 import {
   formatDuration,
@@ -60,14 +62,6 @@ import {
 } from '@/lib/format';
 import { listItemTransition } from '@/lib/motion';
 import { participantProfilePath } from '@/lib/participant-id';
-
-const fetchTodayHistory = async (): Promise<TodaySessionsResponse> => {
-  const response = await apiFetch('/checkin/history/today', { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-  return (await response.json()) as TodaySessionsResponse;
-};
 
 const postHistoryBulkCheckOut = async (
   participantIds: string[],
@@ -105,36 +99,6 @@ function LoadingScreen() {
         </Card>
       </div>
     </PageShell>
-  );
-}
-
-function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-rose-50 p-6 text-center">
-      <Alert variant="destructive" className="max-w-xl text-left text-lg">
-        <IconAlertCircle className="size-6" aria-hidden="true" />
-        <AlertTitle>履歴を表示できません</AlertTitle>
-        <AlertDescription>{message}</AlertDescription>
-      </Alert>
-      <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
-        <Button asChild size="lg" className="h-16 text-xl">
-          <Link href="/">
-            <IconHome className="size-6" data-icon="inline-start" />
-            ホームに戻る
-          </Link>
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="lg"
-          onClick={onRetry}
-          className="h-16 text-xl"
-        >
-          <IconRefresh className="size-6" data-icon="inline-start" />
-          再読み込み
-        </Button>
-      </div>
-    </main>
   );
 }
 
@@ -185,8 +149,7 @@ function CheckoutDialog({
 
 export default function HistoryPage() {
   const prefersReduced = useReducedMotion();
-  const [data, setData] = useState<TodaySessionsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { state, reload } = useApiResource<TodaySessionsResponse>('/checkin/history/today');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -194,30 +157,8 @@ export default function HistoryPage() {
   const [lastResult, setLastResult] = useState<HistoryBulkCheckOutResponse | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const loadSessions = useCallback(
-    async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
-      if (showLoading) setIsLoading(true);
-      setError(null);
-      try {
-        const result = await fetchTodayHistory();
-        setData(result);
-        setSelectedIds((ids) =>
-          ids.filter((id) =>
-            result.sessions.some((session) => session.isPresent && session.participantId === id),
-          ),
-        );
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (showLoading) setIsLoading(false);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
+  // useApiResource が ok のときだけ実データ。それ以外は null で描画ロジックを共通化。
+  const data = state.kind === 'ok' ? state.data : null;
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
@@ -230,6 +171,12 @@ export default function HistoryPage() {
     [sessions],
   );
   const presentIdSet = useMemo(() => new Set(presentIds), [presentIds]);
+
+  // 選択は保存値（selectedIds）を prune せず、使用時に present で絞り込む。
+  // 再取得で滞在中でなくなった選択は selectedPresentIds 以降（カウント・チェック状態・
+  // チェックアウト対象）すべてで除外されるため、保存値を間引く effect は不要。
+  // （presentIdSet を deps にした setSelectedIds は、データ到着前の loading 中に
+  //  presentIdSet が毎レンダー再生成されるため無限ループになる）
   const selectedPresentIds = useMemo(
     () => selectedIds.filter((id) => presentIdSet.has(id)),
     [presentIdSet, selectedIds],
@@ -290,7 +237,7 @@ export default function HistoryPage() {
       const result = await postHistoryBulkCheckOut(targetIds);
       setLastResult(result);
       setSelectedIds([]);
-      await loadSessions({ showLoading: false });
+      reload({ background: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -298,12 +245,37 @@ export default function HistoryPage() {
     }
   };
 
-  if (isLoading) {
+  if (state.kind === 'idle' || state.kind === 'loading') {
     return <LoadingScreen />;
   }
 
-  if (error && !data) {
-    return <ErrorScreen message={error} onRetry={() => void loadSessions()} />;
+  if (state.kind === 'error') {
+    return (
+      <CheckinErrorScreen
+        title="履歴を表示できません"
+        message={state.message}
+        actions={
+          <>
+            <Button asChild size="lg" className="h-16 text-xl">
+              <Link href="/">
+                <IconHome className="size-6" data-icon="inline-start" />
+                ホームに戻る
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={() => reload()}
+              className="h-16 text-xl"
+            >
+              <IconRefresh className="size-6" data-icon="inline-start" />
+              再読み込み
+            </Button>
+          </>
+        }
+      />
+    );
   }
 
   const summary = data?.summary ?? { totalCheckedIn: 0, currentlyPresent: 0, checkedOut: 0 };
@@ -333,7 +305,7 @@ export default function HistoryPage() {
                     variant="outline"
                     size="lg"
                     disabled={isSubmitting}
-                    onClick={() => void loadSessions({ showLoading: false })}
+                    onClick={() => reload({ background: true })}
                     className="h-14 text-lg"
                   >
                     <IconRefresh className="size-6" data-icon="inline-start" />

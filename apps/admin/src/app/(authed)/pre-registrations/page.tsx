@@ -101,7 +101,7 @@ export default function PreRegistrationsPage() {
       </Reveal>
 
       <Reveal index={1}>
-        <CreatePreRegistrationForm onCreated={reload} />
+        <CreatePreRegistrationForm onCreated={() => reload({ background: true })} />
       </Reveal>
 
       {/* データ領域。Reveal を常時マウントして入場は一度だけ（再フェッチで再生されない）。
@@ -133,7 +133,7 @@ export default function PreRegistrationsPage() {
                     <PreRegistrationRow
                       key={p.preRegistrationId}
                       item={p}
-                      onDeleted={reload}
+                      onDeleted={() => reload({ background: true })}
                       variant="card"
                     />
                   ))}
@@ -157,7 +157,7 @@ export default function PreRegistrationsPage() {
                         <PreRegistrationRow
                           key={p.preRegistrationId}
                           item={p}
-                          onDeleted={reload}
+                          onDeleted={() => reload({ background: true })}
                           variant="row"
                         />
                       ))}

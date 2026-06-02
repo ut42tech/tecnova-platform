@@ -96,7 +96,7 @@ export default function DashboardPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => sessions.reload()}
+                onClick={() => sessions.reload({ background: true })}
                 disabled={sessions.state.kind === 'loading'}
               >
                 <IconRefresh data-icon="inline-start" />
