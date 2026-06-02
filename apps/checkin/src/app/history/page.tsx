@@ -172,12 +172,11 @@ export default function HistoryPage() {
   );
   const presentIdSet = useMemo(() => new Set(presentIds), [presentIds]);
 
-  // 取得結果が変わったら、もう滞在中でない参加者を選択から外す
-  // （旧 loadSessions の selectedIds 絞り込みを再取得後も維持）。
-  useEffect(() => {
-    setSelectedIds((ids) => ids.filter((id) => presentIdSet.has(id)));
-  }, [presentIdSet]);
-
+  // 選択は保存値（selectedIds）を prune せず、使用時に present で絞り込む。
+  // 再取得で滞在中でなくなった選択は selectedPresentIds 以降（カウント・チェック状態・
+  // チェックアウト対象）すべてで除外されるため、保存値を間引く effect は不要。
+  // （presentIdSet を deps にした setSelectedIds は、データ到着前の loading 中に
+  //  presentIdSet が毎レンダー再生成されるため無限ループになる）
   const selectedPresentIds = useMemo(
     () => selectedIds.filter((id) => presentIdSet.has(id)),
     [presentIdSet, selectedIds],
