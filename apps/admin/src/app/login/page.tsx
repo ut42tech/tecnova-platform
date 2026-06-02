@@ -11,12 +11,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@tecnova/ui/components/card';
+import { motion, useReducedMotion } from 'motion/react';
 import { useState } from 'react';
+import { BrandLogo } from '@/components/brand-logo';
+import { Reveal } from '@/components/reveal';
 import { authClient } from '@/lib/auth-client';
+import { tapScale } from '@/lib/motion';
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const prefersReduced = useReducedMotion();
 
   const signIn = async () => {
     setBusy(true);
@@ -41,32 +46,39 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-1 items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader className="gap-2">
-          <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
-            テクノバながさき 運営管理
-          </p>
-          <CardTitle className="text-2xl">管理画面にログイン</CardTitle>
-          <CardDescription>
-            許可リストに登録された管理者のみログインできます。 Google アカウントで認証してください。
-          </CardDescription>
-        </CardHeader>
-        {error && (
-          <CardContent>
-            <Alert variant="destructive">
-              <AlertTitle>ログインエラー</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          </CardContent>
-        )}
-        <CardFooter>
-          <Button type="button" size="lg" onClick={signIn} disabled={busy} className="w-full">
-            <IconBrandGoogleFilled data-icon="inline-start" />
-            {busy ? 'リダイレクト中...' : 'Google でログイン'}
-          </Button>
-        </CardFooter>
-      </Card>
+    <main className="flex min-h-svh flex-1 items-center justify-center bg-muted/30 p-4">
+      <Reveal className="w-full max-w-lg">
+        <Card className="w-full">
+          <CardHeader className="gap-2">
+            {/* 直後に「テクノバながさき 運営管理」の文字があるので、ロゴは装飾扱い（alt=""）にして二重読み上げを避ける */}
+            <BrandLogo imgClassName="h-11" className="mb-1 w-fit" priority alt="" />
+            <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+              テクノバながさき 運営管理
+            </p>
+            <CardTitle className="text-2xl">管理画面にログイン</CardTitle>
+            <CardDescription>
+              許可リストに登録された管理者のみログインできます。 Google
+              アカウントで認証してください。
+            </CardDescription>
+          </CardHeader>
+          {error && (
+            <CardContent>
+              <Alert variant="destructive">
+                <AlertTitle>ログインエラー</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
+          <CardFooter>
+            <motion.div className="w-full" whileTap={prefersReduced ? undefined : tapScale}>
+              <Button type="button" size="lg" onClick={signIn} disabled={busy} className="w-full">
+                <IconBrandGoogleFilled data-icon="inline-start" />
+                {busy ? 'リダイレクト中...' : 'Google でログイン'}
+              </Button>
+            </motion.div>
+          </CardFooter>
+        </Card>
+      </Reveal>
     </main>
   );
 }
