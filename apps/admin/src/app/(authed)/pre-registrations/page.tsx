@@ -34,6 +34,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@tecnova/ui/components/collapsible';
+import { DataError } from '@tecnova/ui/components/data-error';
+import { EmptyState } from '@tecnova/ui/components/empty-state';
 import { Input } from '@tecnova/ui/components/input';
 import { Label } from '@tecnova/ui/components/label';
 import { useMe } from '@tecnova/ui/components/me-provider';
@@ -54,21 +56,13 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { ApiError, apiFetch, apiJson } from '@tecnova/ui/lib/api-client';
 import { toastError, toastSuccess } from '@tecnova/ui/lib/toast';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { RecordCard, RecordField } from '@/components/record-card';
 import { Reveal } from '@/components/reveal';
-
-type State =
-  | { kind: 'loading' }
-  | {
-      kind: 'ok';
-      preRegistrations: PreRegistrationItem[];
-      activatedPreRegistrations: ActivatedPreRegistrationItem[];
-    }
-  | { kind: 'error'; message: string };
 
 const todayInJst = (): string =>
   new Intl.DateTimeFormat('en-CA', {
@@ -80,29 +74,10 @@ const todayInJst = (): string =>
 
 export default function PreRegistrationsPage() {
   const me = useMe();
-  const [state, setState] = useState<State>({ kind: 'loading' });
-
-  const load = useCallback(async () => {
-    setState({ kind: 'loading' });
-    try {
-      const data = await apiJson<PreRegistrationsListResponse>('/api/pre-registrations');
-      setState({
-        kind: 'ok',
-        preRegistrations: data.preRegistrations,
-        activatedPreRegistrations: data.activatedPreRegistrations ?? [],
-      });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (me.mentor.role !== 'admin') return;
-    void load();
-  }, [me.mentor.role, load]);
+  // admin のときだけ取得する。作成/削除後は reload() で再取得。
+  const { state, reload } = useApiResource<PreRegistrationsListResponse>('/api/pre-registrations', {
+    enabled: me.mentor.role === 'admin',
+  });
 
   // ガード: ナビには非表示だが、URL 直叩き対策。/api/pre-registrations も 403 で弾かれる。
   if (me.mentor.role !== 'admin') {
@@ -126,7 +101,7 @@ export default function PreRegistrationsPage() {
       </Reveal>
 
       <Reveal index={1}>
-        <CreatePreRegistrationForm onCreated={load} />
+        <CreatePreRegistrationForm onCreated={reload} />
       </Reveal>
 
       {/* データ領域。Reveal を常時マウントして入場は一度だけ（再フェッチで再生されない）。
@@ -144,28 +119,21 @@ export default function PreRegistrationsPage() {
             </div>
           </>
         )}
-        {state.kind === 'error' && (
-          <Alert variant="destructive">
-            <AlertTitle>読み込めませんでした</AlertTitle>
-            <AlertDescription>{state.message}</AlertDescription>
-          </Alert>
-        )}
+        {state.kind === 'error' && <DataError message={state.message} />}
 
         {state.kind === 'ok' && (
           <>
-            {state.preRegistrations.length === 0 ? (
-              <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-                ID未発行の事前登録はありません
-              </div>
+            {state.data.preRegistrations.length === 0 ? (
+              <EmptyState message="ID未発行の事前登録はありません" />
             ) : (
               <>
                 {/* モバイル: カードリスト */}
                 <div className="flex flex-col gap-3 md:hidden">
-                  {state.preRegistrations.map((p) => (
+                  {state.data.preRegistrations.map((p) => (
                     <PreRegistrationRow
                       key={p.preRegistrationId}
                       item={p}
-                      onDeleted={load}
+                      onDeleted={reload}
                       variant="card"
                     />
                   ))}
@@ -185,11 +153,11 @@ export default function PreRegistrationsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {state.preRegistrations.map((p) => (
+                      {state.data.preRegistrations.map((p) => (
                         <PreRegistrationRow
                           key={p.preRegistrationId}
                           item={p}
-                          onDeleted={load}
+                          onDeleted={reload}
                           variant="row"
                         />
                       ))}
@@ -199,7 +167,7 @@ export default function PreRegistrationsPage() {
               </>
             )}
 
-            <ActivatedPreRegistrationsTable items={state.activatedPreRegistrations} />
+            <ActivatedPreRegistrationsTable items={state.data.activatedPreRegistrations ?? []} />
           </>
         )}
       </Reveal>
@@ -299,7 +267,7 @@ function ActivatedPreRegistrationsTable({ items }: { items: ActivatedPreRegistra
   );
 }
 
-function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<void> }) {
+function CreatePreRegistrationForm({ onCreated }: { onCreated: () => void }) {
   const [fullName, setFullName] = useState('');
   const [nickname, setNickname] = useState('');
   const [grade, setGrade] = useState<Grade | ''>('');
@@ -330,7 +298,7 @@ function CreatePreRegistrationForm({ onCreated }: { onCreated: () => Promise<voi
       setNickname('');
       setGrade('');
       setRegisteredAt(todayInJst());
-      await onCreated();
+      onCreated();
     } catch (e) {
       toastError(e, '事前登録を追加できませんでした');
     } finally {
@@ -410,7 +378,7 @@ function PreRegistrationRow({
   variant,
 }: {
   item: PreRegistrationItem;
-  onDeleted: () => Promise<void>;
+  onDeleted: () => void;
   // 'row' = デスクトップのテーブル行 / 'card' = モバイルのカード
   variant: 'row' | 'card';
 }) {
@@ -433,7 +401,7 @@ function PreRegistrationRow({
         throw new ApiError(r.status, body);
       }
       toastSuccess(`${item.preRegistrationId} を削除しました`);
-      await onDeleted();
+      onDeleted();
     } catch (e) {
       toastError(e, '削除できませんでした');
     } finally {
