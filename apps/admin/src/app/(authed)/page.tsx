@@ -203,7 +203,7 @@ function DashboardBody({
             <RecordCard
               key={s.sessionId}
               onClick={() => onSelectParticipant(s.participantId)}
-              ariaLabel={`${s.nickname} の詳細を開く`}
+              ariaLabel={`${s.nickname}（${s.grade}・${s.isPresent ? '来場中' : '退出済'}）の詳細を開く`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

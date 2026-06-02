@@ -21,12 +21,14 @@ const OPTIONS = [
 interface Props {
   className?: string;
   align?: 'start' | 'center' | 'end';
+  // トリガーボタンのサイズ。モバイルではタッチ確保のため大きめを渡す。
+  size?: 'icon-xs' | 'icon-sm' | 'icon' | 'icon-lg';
 }
 
 // light / dark / system を選べるテーマ切替。
 // next-themes はサーバ描画時にテーマが未確定なので、マウント後にだけ
 // 実際のアイコン・選択状態を出してハイドレーション不整合を避ける。
-export function ThemeToggle({ className, align = 'end' }: Props) {
+export function ThemeToggle({ className, align = 'end', size = 'icon-sm' }: Props) {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -45,7 +47,7 @@ export function ThemeToggle({ className, align = 'end' }: Props) {
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={size}
           className={className}
           aria-label="テーマを切り替える"
         >
@@ -53,10 +55,7 @@ export function ThemeToggle({ className, align = 'end' }: Props) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>
-        <DropdownMenuRadioGroup
-          value={mounted ? theme : undefined}
-          onValueChange={setTheme}
-        >
+        <DropdownMenuRadioGroup value={mounted ? theme : undefined} onValueChange={setTheme}>
           {OPTIONS.map(({ value, label, Icon }) => (
             <DropdownMenuRadioItem key={value} value={value}>
               <Icon />

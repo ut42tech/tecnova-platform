@@ -186,7 +186,7 @@ export default function ParticipantsPage() {
                 <RecordCard
                   key={p.id}
                   onClick={() => setSelectedParticipantId(p.id)}
-                  ariaLabel={`${p.nickname} の詳細を開く`}
+                  ariaLabel={`${p.nickname}（${p.grade}・${p.active ? '有効' : '無効'}）の詳細を開く`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">

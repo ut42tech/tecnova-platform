@@ -151,7 +151,7 @@ function StatsBody({ summary }: { summary: SummaryState }) {
 
   return (
     <>
-      <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5">
         <SummaryCard
           label="総参加回数"
           value={totals.total}

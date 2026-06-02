@@ -30,12 +30,14 @@ export function BottomNav({ className }: { className?: string }) {
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'relative flex h-14 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors',
-                  active ? 'text-primary' : 'text-muted-foreground',
+                  'relative flex h-14 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none',
+                  // dark の --primary は背景に対してコントラスト不足（2.6:1）なので、
+                  // dark では明るい sidebar-primary を使って AA を満たす。
+                  active ? 'text-primary dark:text-sidebar-primary' : 'text-muted-foreground',
                 )}
               >
                 {active && (
-                  <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary" />
+                  <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary dark:bg-sidebar-primary" />
                 )}
                 <item.Icon className="size-5" stroke={active ? 2.2 : 1.7} />
                 <span className="leading-none">{item.shortLabel}</span>

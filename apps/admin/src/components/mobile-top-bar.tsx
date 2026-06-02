@@ -24,14 +24,15 @@ export function MobileTopBar({ className }: { className?: string }) {
         <span className="truncate text-sm font-bold tracking-tight">テクノバ管理画面</span>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <ThemeToggle />
+        {/* モバイルはタッチ確保のため 40px のヒットエリアにする。 */}
+        <ThemeToggle size="icon-lg" />
         <AccountMenu
           align="end"
           trigger={
             <button
               type="button"
               aria-label="アカウント"
-              className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80"
+              className="flex size-10 items-center justify-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               {me.mentor.name.charAt(0)}
             </button>

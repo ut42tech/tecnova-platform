@@ -119,7 +119,11 @@ export default function MentorsPage() {
             </div>
           ) : (
             <>
-              {/* モバイル: カードリスト */}
+              {/* モバイル: カードリスト。
+                  card / row 両 variant を常時マウントし CSS で出し分ける（SSR 安全）。
+                  各行は編集状態をローカルに持つため、編集途中で md をまたいでリサイズすると
+                  未保存の編集が見かけ上消える。admin の利用端末（PC / タブレット）では稀で、
+                  保存すれば再取得で両者が同期するため許容するトレードオフ。 */}
               <div className="flex flex-col gap-3 md:hidden">
                 {state.mentors.map((m) => (
                   <MentorRow key={m.id} mentor={m} onUpdated={load} variant="card" />
