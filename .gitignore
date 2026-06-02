@@ -155,6 +155,7 @@ vite.config.ts.timestamp-*
 .env.production
 .dev.vars
 .dev.vars.production
+.dev.vars.*
 
 # Service account keys
 service-account-*.json
