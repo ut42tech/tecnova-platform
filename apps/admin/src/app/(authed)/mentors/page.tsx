@@ -10,6 +10,8 @@ import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/aler
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
 import { Checkbox } from '@tecnova/ui/components/checkbox';
+import { DataError } from '@tecnova/ui/components/data-error';
+import { EmptyState } from '@tecnova/ui/components/empty-state';
 import { Input } from '@tecnova/ui/components/input';
 import { Label } from '@tecnova/ui/components/label';
 import { useMe } from '@tecnova/ui/components/me-provider';
@@ -36,41 +38,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@tecnova/ui/components/tooltip';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { apiJson } from '@tecnova/ui/lib/api-client';
 import { formatJstDate } from '@tecnova/ui/lib/format';
 import { toastError, toastSuccess } from '@tecnova/ui/lib/toast';
 import { cn } from '@tecnova/ui/lib/utils';
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { RecordCard, RecordField } from '@/components/record-card';
 import { Reveal } from '@/components/reveal';
 
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ok'; mentors: MentorItem[] }
-  | { kind: 'error'; message: string };
-
 export default function MentorsPage() {
   const me = useMe();
-  const [state, setState] = useState<State>({ kind: 'loading' });
-
-  const load = useCallback(async () => {
-    setState({ kind: 'loading' });
-    try {
-      const data = await apiJson<MentorsListResponse>('/api/mentors');
-      setState({ kind: 'ok', mentors: data.mentors });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (me.mentor.role !== 'admin') return;
-    void load();
-  }, [me.mentor.role, load]);
+  // admin のときだけ取得する。作成/更新後は reload() で再取得。
+  const { state, reload } = useApiResource<MentorsListResponse>('/api/mentors', {
+    enabled: me.mentor.role === 'admin',
+  });
 
   // ガード: ナビには非表示だが、URL 直叩き対策。/api/mentors も 403 で弾かれる。
   if (me.mentor.role !== 'admin') {
@@ -95,7 +78,7 @@ export default function MentorsPage() {
         </Reveal>
 
         <Reveal index={1}>
-          <CreateMentorForm onCreated={load} />
+          <CreateMentorForm onCreated={reload} />
         </Reveal>
 
         {/* データ領域。Reveal を常時マウントして入場は一度だけ（再フェッチで再生されない）。
@@ -113,18 +96,11 @@ export default function MentorsPage() {
               </div>
             </>
           )}
-          {state.kind === 'error' && (
-            <Alert variant="destructive">
-              <AlertTitle>読み込めませんでした</AlertTitle>
-              <AlertDescription>{state.message}</AlertDescription>
-            </Alert>
-          )}
+          {state.kind === 'error' && <DataError message={state.message} />}
 
           {state.kind === 'ok' &&
-            (state.mentors.length === 0 ? (
-              <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-                まだ管理者が登録されていません
-              </div>
+            (state.data.mentors.length === 0 ? (
+              <EmptyState message="まだ管理者が登録されていません" />
             ) : (
               <>
                 {/* モバイル: カードリスト。
@@ -133,8 +109,8 @@ export default function MentorsPage() {
                   未保存の編集が見かけ上消える。admin の利用端末（PC / タブレット）では稀で、
                   保存すれば再取得で両者が同期するため許容するトレードオフ。 */}
                 <div className="flex flex-col gap-3 md:hidden">
-                  {state.mentors.map((m) => (
-                    <MentorRow key={m.id} mentor={m} onUpdated={load} variant="card" />
+                  {state.data.mentors.map((m) => (
+                    <MentorRow key={m.id} mentor={m} onUpdated={reload} variant="card" />
                   ))}
                 </div>
 
@@ -153,8 +129,8 @@ export default function MentorsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {state.mentors.map((m) => (
-                        <MentorRow key={m.id} mentor={m} onUpdated={load} variant="row" />
+                      {state.data.mentors.map((m) => (
+                        <MentorRow key={m.id} mentor={m} onUpdated={reload} variant="row" />
                       ))}
                     </TableBody>
                   </Table>
@@ -167,7 +143,7 @@ export default function MentorsPage() {
   );
 }
 
-function CreateMentorForm({ onCreated }: { onCreated: () => Promise<void> }) {
+function CreateMentorForm({ onCreated }: { onCreated: () => void }) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState<'admin' | 'mentor'>('mentor');
@@ -184,7 +160,7 @@ function CreateMentorForm({ onCreated }: { onCreated: () => Promise<void> }) {
       setEmail('');
       setName('');
       setRole('mentor');
-      await onCreated();
+      onCreated();
     } catch (e) {
       toastError(e, '管理者を追加できませんでした');
     } finally {
@@ -248,7 +224,7 @@ function MentorRow({
   variant,
 }: {
   mentor: MentorItem;
-  onUpdated: () => Promise<void>;
+  onUpdated: () => void;
   // 'row' = デスクトップのテーブル行 / 'card' = モバイルのカード
   variant: 'row' | 'card';
 }) {
@@ -271,7 +247,7 @@ function MentorRow({
       if (active !== mentor.active) body.active = active;
       await apiJson<MentorItem>(`/api/mentors/${mentor.id}`, { method: 'PATCH', body });
       toastSuccess(`${mentor.name} を保存しました`);
-      await onUpdated();
+      onUpdated();
     } catch (e) {
       toastError(e, '保存できませんでした');
     } finally {

@@ -2,10 +2,11 @@
 
 import { IconSearch, IconX } from '@tabler/icons-react';
 import { GRADES, type Grade, type ParticipantsListResponse } from '@tecnova/shared/schemas';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card } from '@tecnova/ui/components/card';
+import { DataError } from '@tecnova/ui/components/data-error';
+import { EmptyState } from '@tecnova/ui/components/empty-state';
 import { Input } from '@tecnova/ui/components/input';
 import {
   Select,
@@ -24,18 +25,13 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
-import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
 import { RecordCard, RecordField } from '@/components/record-card';
 import { Reveal } from '@/components/reveal';
-
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: ParticipantsListResponse }
-  | { kind: 'error'; message: string };
 
 const PAGE_SIZE = 50;
 
@@ -44,7 +40,6 @@ const ANY_GRADE = '__any_grade__';
 const ANY_ACTIVE = '__any_active__';
 
 export default function ParticipantsPage() {
-  const [state, setState] = useState<State>({ kind: 'loading' });
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [grade, setGrade] = useState<string>(ANY_GRADE);
@@ -73,26 +68,15 @@ export default function ParticipantsPage() {
     setPage(1);
   };
 
-  useEffect(() => {
-    void (async () => {
-      setState({ kind: 'loading' });
-      try {
-        const params = new URLSearchParams({
-          page: String(page),
-          limit: String(PAGE_SIZE),
-        });
-        if (debouncedSearch) params.set('search', debouncedSearch);
-        if (grade !== ANY_GRADE) params.set('grade', grade);
-        if (activeFilter !== ANY_ACTIVE) params.set('active', activeFilter);
-        const data = await apiJson<ParticipantsListResponse>(
-          `/api/participants?${params.toString()}`,
-        );
-        setState({ kind: 'ok', data });
-      } catch (e) {
-        setState({ kind: 'error', message: apiErrorMessage(e) });
-      }
-    })();
-  }, [debouncedSearch, page, grade, activeFilter]);
+  // クエリを path に組み立てる。page/検索/フィルタが変わると path が変わり、
+  // useApiResource が自動で再取得する。
+  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  if (debouncedSearch) params.set('search', debouncedSearch);
+  if (grade !== ANY_GRADE) params.set('grade', grade);
+  if (activeFilter !== ANY_ACTIVE) params.set('active', activeFilter);
+  const { state } = useApiResource<ParticipantsListResponse>(
+    `/api/participants?${params.toString()}`,
+  );
 
   const totalPages =
     state.kind === 'ok' ? Math.max(1, Math.ceil(state.data.pagination.total / PAGE_SIZE)) : 1;
@@ -172,21 +156,14 @@ export default function ParticipantsPage() {
           </>
         )}
 
-        {state.kind === 'error' && (
-          <Alert variant="destructive">
-            <AlertTitle>読み込めませんでした</AlertTitle>
-            <AlertDescription>{state.message}</AlertDescription>
-          </Alert>
-        )}
+        {state.kind === 'error' && <DataError message={state.message} />}
 
         {state.kind === 'ok' && (
           <>
             {/* モバイル: カードリスト */}
             <div className="flex flex-col gap-3 md:hidden">
               {state.data.participants.length === 0 ? (
-                <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-                  該当する利用者が見つかりません
-                </div>
+                <EmptyState message="該当する利用者が見つかりません" />
               ) : (
                 state.data.participants.map((p) => (
                   <RecordCard

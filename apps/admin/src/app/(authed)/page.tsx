@@ -9,10 +9,10 @@ import {
 } from '@tabler/icons-react';
 import type { EventsListResponse, TodaySessionsResponse } from '@tecnova/shared/schemas';
 import { toJstDateString } from '@tecnova/shared/venue-schedule';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
+import { DataError } from '@tecnova/ui/components/data-error';
 import {
   Select,
   SelectContent,
@@ -31,18 +31,13 @@ import {
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
 import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
-import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
-import { useCallback, useEffect, useState } from 'react';
+import { type ResourceState, useApiResource } from '@tecnova/ui/hooks/use-api-resource';
+import { useState } from 'react';
 import { AnimatedNumber } from '@/components/animated-number';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
 import { RecordCard, RecordField } from '@/components/record-card';
 import { Reveal } from '@/components/reveal';
-
-type SessionsState =
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: TodaySessionsResponse }
-  | { kind: 'error'; message: string };
 
 // セレクタで「今日」を選んでいる状態のセンチネル値。
 // 空文字や undefined を使うと Select の制御値として扱いにくいのでこの形に。
@@ -57,40 +52,19 @@ const fmtTime = (iso: string): string =>
   }).format(new Date(iso));
 
 export default function DashboardPage() {
-  const [sessions, setSessions] = useState<SessionsState>({ kind: 'loading' });
-  const [events, setEvents] = useState<EventsListResponse['events']>([]);
   const [selectedDate, setSelectedDate] = useState<string>(TODAY_VALUE);
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
 
-  const loadSessions = useCallback(async (dateOrToday: string) => {
-    setSessions({ kind: 'loading' });
-    try {
-      const path =
-        dateOrToday === TODAY_VALUE
-          ? '/api/sessions'
-          : `/api/sessions?date=${encodeURIComponent(dateOrToday)}`;
-      const data = await apiJson<TodaySessionsResponse>(path);
-      setSessions({ kind: 'ok', data });
-    } catch (e) {
-      setSessions({ kind: 'error', message: apiErrorMessage(e) });
-    }
-  }, []);
+  // 日付を path に含めることで、選択変更で自動再取得される。更新ボタンは reload()。
+  const sessionsPath =
+    selectedDate === TODAY_VALUE
+      ? '/api/sessions'
+      : `/api/sessions?date=${encodeURIComponent(selectedDate)}`;
+  const sessions = useApiResource<TodaySessionsResponse>(sessionsPath);
 
-  useEffect(() => {
-    // イベント一覧は失敗しても致命ではないので、エラーは表示せず空で続行する。
-    void (async () => {
-      try {
-        const r = await apiJson<EventsListResponse>('/api/events');
-        setEvents(r.events);
-      } catch {
-        setEvents([]);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    void loadSessions(selectedDate);
-  }, [selectedDate, loadSessions]);
+  // イベント一覧は失敗しても致命ではないので、取得できたときだけ使う（エラーは無視）。
+  const eventsResource = useApiResource<EventsListResponse>('/api/events');
+  const events = eventsResource.state.kind === 'ok' ? eventsResource.state.data.events : [];
 
   const today = toJstDateString(new Date());
   // 「本日」ラベル + イベントとして登録済みの過去日を結合する。
@@ -122,8 +96,8 @@ export default function DashboardPage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => loadSessions(selectedDate)}
-                disabled={sessions.kind === 'loading'}
+                onClick={() => sessions.reload()}
+                disabled={sessions.state.kind === 'loading'}
               >
                 <IconRefresh data-icon="inline-start" />
                 更新
@@ -137,7 +111,7 @@ export default function DashboardPage() {
           常時マウントなので入場は一度だけ（再フェッチで再生されない）。 */}
       <Reveal index={1} className="flex flex-col gap-6">
         <DashboardBody
-          sessions={sessions}
+          sessions={sessions.state}
           onSelectParticipant={(id) => setSelectedParticipantId(id)}
         />
       </Reveal>
@@ -156,10 +130,10 @@ function DashboardBody({
   sessions,
   onSelectParticipant,
 }: {
-  sessions: SessionsState;
+  sessions: ResourceState<TodaySessionsResponse>;
   onSelectParticipant: (id: string) => void;
 }) {
-  if (sessions.kind === 'loading') {
+  if (sessions.kind === 'loading' || sessions.kind === 'idle') {
     return (
       <>
         <section className="grid grid-cols-3 gap-3 md:gap-4">
@@ -180,12 +154,7 @@ function DashboardBody({
   }
 
   if (sessions.kind === 'error') {
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>セッションを読み込めませんでした</AlertTitle>
-        <AlertDescription>{sessions.message}</AlertDescription>
-      </Alert>
-    );
+    return <DataError title="セッションを読み込めませんでした" message={sessions.message} />;
   }
 
   const { event, sessions: rows, summary } = sessions.data;
