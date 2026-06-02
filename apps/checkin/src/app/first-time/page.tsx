@@ -28,21 +28,17 @@ import { Card, CardContent, CardDescription, CardHeader } from '@tecnova/ui/comp
 import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import { Table, TableBody, TableCell, TableRow } from '@tecnova/ui/components/table';
-import { apiFetch, readErrorMessage } from '@tecnova/ui/lib/api-client';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AnimatedNumber } from '@/components/animated-number';
 import { PageShell } from '@/components/page-shell';
 import { PanelHeader } from '@/components/panel-header';
 import { Reveal } from '@/components/reveal';
+import { CheckinErrorScreen } from '@/components/screen-error';
 import { formatJapaneseDate } from '@/lib/format';
 import { listItemTransition } from '@/lib/motion';
-
-type State =
-  | { kind: 'loading' }
-  | { kind: 'list'; items: PreRegisteredListResponse['participants'] }
-  | { kind: 'error'; message: string };
 
 type PreRegisteredParticipant = PreRegisteredListResponse['participants'][number];
 
@@ -124,33 +120,14 @@ function RegistrationSteps() {
 
 export default function FirstTimePage() {
   const prefersReduced = useReducedMotion();
-  const [state, setState] = useState<State>({ kind: 'loading' });
+  const { state, reload } = useApiResource<PreRegisteredListResponse>('/checkin/pre-registered');
   const [query, setQuery] = useState('');
 
-  const loadParticipants = useCallback(async () => {
-    setState({ kind: 'loading' });
-    try {
-      const r = await apiFetch('/checkin/pre-registered');
-      if (!r.ok) throw new Error(await readErrorMessage(r));
-      const data = (await r.json()) as PreRegisteredListResponse;
-      setState({ kind: 'list', items: data.participants });
-    } catch (e) {
-      setState({
-        kind: 'error',
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadParticipants();
-  }, [loadParticipants]);
-
   const filteredItems = useMemo(() => {
-    if (state.kind !== 'list') return [];
+    if (state.kind !== 'ok') return [];
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return state.items;
-    return state.items.filter((item) => {
+    if (!normalizedQuery) return state.data.participants;
+    return state.data.participants.filter((item) => {
       const values = [
         item.fullName,
         item.nickname,
@@ -162,7 +139,7 @@ export default function FirstTimePage() {
     });
   }, [query, state]);
 
-  if (state.kind === 'loading') {
+  if (state.kind === 'idle' || state.kind === 'loading') {
     return (
       <PageShell>
         <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
@@ -189,27 +166,21 @@ export default function FirstTimePage() {
 
   if (state.kind === 'error') {
     return (
-      <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-rose-50 p-6 text-center">
-        <Alert variant="destructive" className="max-w-xl text-left text-lg">
-          <IconAlertCircle className="size-6" aria-hidden="true" />
-          <AlertTitle>一覧を表示できません</AlertTitle>
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-        <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
-          <Button
-            type="button"
-            size="lg"
-            onClick={() => void loadParticipants()}
-            className="h-16 text-xl"
-          >
-            <IconRefresh className="size-6" data-icon="inline-start" />
-            再読み込み
-          </Button>
-          <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
-            <Link href="/">ホームに戻る</Link>
-          </Button>
-        </div>
-      </main>
+      <CheckinErrorScreen
+        title="一覧を表示できません"
+        message={state.message}
+        actions={
+          <>
+            <Button type="button" size="lg" onClick={() => reload()} className="h-16 text-xl">
+              <IconRefresh className="size-6" data-icon="inline-start" />
+              再読み込み
+            </Button>
+            <Button asChild variant="secondary" size="lg" className="h-16 text-xl">
+              <Link href="/">ホームに戻る</Link>
+            </Button>
+          </>
+        }
+      />
     );
   }
 
@@ -233,14 +204,18 @@ export default function FirstTimePage() {
                   style={{ height: 'auto' }}
                   className="w-fit px-4 py-2 text-base"
                 >
-                  未登録 <AnimatedNumber value={state.items.length} className="mx-1 tabular-nums" />
+                  未登録{' '}
+                  <AnimatedNumber
+                    value={state.data.participants.length}
+                    className="mx-1 tabular-nums"
+                  />
                   人
                 </Badge>
               </div>
 
               <RegistrationSteps />
 
-              {state.items.length === 0 ? (
+              {state.data.participants.length === 0 ? (
                 <Alert className="border-sky-200 bg-white">
                   <IconAlertCircle className="size-5" aria-hidden="true" />
                   <AlertTitle>今、登録できる人はいません</AlertTitle>
@@ -282,7 +257,7 @@ export default function FirstTimePage() {
                         type="button"
                         variant="outline"
                         size="lg"
-                        onClick={() => void loadParticipants()}
+                        onClick={() => reload()}
                         className="h-14 text-lg"
                       >
                         <IconRefresh className="size-6" data-icon="inline-start" />
