@@ -43,6 +43,7 @@ import { cn } from '@tecnova/ui/lib/utils';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { RecordCard, RecordField } from '@/components/record-card';
+import { Reveal } from '@/components/reveal';
 
 type State =
   | { kind: 'loading' }
@@ -86,73 +87,81 @@ export default function MentorsPage() {
   return (
     <TooltipProvider>
       <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
-        <PageHeader
-          title="管理者一覧"
-          description="管理画面を利用するアカウントの追加・ロール変更・無効化を行います"
-        />
+        <Reveal index={0}>
+          <PageHeader
+            title="管理者一覧"
+            description="管理画面を利用するアカウントの追加・ロール変更・無効化を行います"
+          />
+        </Reveal>
 
-        <CreateMentorForm onCreated={load} />
+        <Reveal index={1}>
+          <CreateMentorForm onCreated={load} />
+        </Reveal>
 
-        {state.kind === 'loading' && (
-          <>
-            <div className="hidden md:block">
-              <TableSkeleton columns={7} rows={5} />
-            </div>
-            <div className="flex flex-col gap-3 md:hidden">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-44 w-full" />
-              ))}
-            </div>
-          </>
-        )}
-        {state.kind === 'error' && (
-          <Alert variant="destructive">
-            <AlertTitle>読み込めませんでした</AlertTitle>
-            <AlertDescription>{state.message}</AlertDescription>
-          </Alert>
-        )}
-
-        {state.kind === 'ok' &&
-          (state.mentors.length === 0 ? (
-            <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-              まだ管理者が登録されていません
-            </div>
-          ) : (
+        {/* データ領域。Reveal を常時マウントして入場は一度だけ（再フェッチで再生されない）。
+            フラグメントを含むので gap-6 を再指定。 */}
+        <Reveal index={2} className="flex flex-col gap-6">
+          {state.kind === 'loading' && (
             <>
-              {/* モバイル: カードリスト。
+              <div className="hidden md:block">
+                <TableSkeleton columns={7} rows={5} />
+              </div>
+              <div className="flex flex-col gap-3 md:hidden">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-44 w-full" />
+                ))}
+              </div>
+            </>
+          )}
+          {state.kind === 'error' && (
+            <Alert variant="destructive">
+              <AlertTitle>読み込めませんでした</AlertTitle>
+              <AlertDescription>{state.message}</AlertDescription>
+            </Alert>
+          )}
+
+          {state.kind === 'ok' &&
+            (state.mentors.length === 0 ? (
+              <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+                まだ管理者が登録されていません
+              </div>
+            ) : (
+              <>
+                {/* モバイル: カードリスト。
                   card / row 両 variant を常時マウントし CSS で出し分ける（SSR 安全）。
                   各行は編集状態をローカルに持つため、編集途中で md をまたいでリサイズすると
                   未保存の編集が見かけ上消える。admin の利用端末（PC / タブレット）では稀で、
                   保存すれば再取得で両者が同期するため許容するトレードオフ。 */}
-              <div className="flex flex-col gap-3 md:hidden">
-                {state.mentors.map((m) => (
-                  <MentorRow key={m.id} mentor={m} onUpdated={load} variant="card" />
-                ))}
-              </div>
+                <div className="flex flex-col gap-3 md:hidden">
+                  {state.mentors.map((m) => (
+                    <MentorRow key={m.id} mentor={m} onUpdated={load} variant="card" />
+                  ))}
+                </div>
 
-              {/* デスクトップ: テーブル */}
-              <Card className="hidden p-0 md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>メールアドレス</TableHead>
-                      <TableHead>名前</TableHead>
-                      <TableHead>ロール</TableHead>
-                      <TableHead>状態</TableHead>
-                      <TableHead>登録日</TableHead>
-                      <TableHead>最終ログイン</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {state.mentors.map((m) => (
-                      <MentorRow key={m.id} mentor={m} onUpdated={load} variant="row" />
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
-            </>
-          ))}
+                {/* デスクトップ: テーブル */}
+                <Card className="hidden p-0 md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>メールアドレス</TableHead>
+                        <TableHead>名前</TableHead>
+                        <TableHead>ロール</TableHead>
+                        <TableHead>状態</TableHead>
+                        <TableHead>登録日</TableHead>
+                        <TableHead>最終ログイン</TableHead>
+                        <TableHead>操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {state.mentors.map((m) => (
+                        <MentorRow key={m.id} mentor={m} onUpdated={load} variant="row" />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Card>
+              </>
+            ))}
+        </Reveal>
       </main>
     </TooltipProvider>
   );

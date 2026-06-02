@@ -5,9 +5,12 @@ import { Button } from '@tecnova/ui/components/button';
 import { useMe } from '@tecnova/ui/components/me-provider';
 import { ThemeToggle } from '@tecnova/ui/components/theme-toggle';
 import { cn } from '@tecnova/ui/lib/utils';
+import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { navIndicatorTransition } from '@/lib/motion';
 import { AccountMenu } from './account-menu';
+import { BrandLogo } from './brand-logo';
 import { isNavItemActive, visibleNavItems } from './nav-items';
 
 // デスクトップ用の固定左サイドバー。ブランド → ナビ → フッター（テーマ切替 +
@@ -15,6 +18,7 @@ import { isNavItemActive, visibleNavItems } from './nav-items';
 export function Sidebar({ className }: { className?: string }) {
   const me = useMe();
   const pathname = usePathname();
+  const prefersReduced = useReducedMotion();
   const items = visibleNavItems(me.mentor.role);
 
   return (
@@ -25,32 +29,47 @@ export function Sidebar({ className }: { className?: string }) {
       )}
     >
       <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <span className="flex size-8 items-center justify-center rounded-xl bg-primary text-[11px] font-bold tracking-tight text-primary-foreground">
-          tec
+        <BrandLogo imgClassName="h-7" priority />
+        <span className="truncate text-sm font-semibold tracking-tight text-muted-foreground">
+          管理画面
         </span>
-        <span className="truncate text-base font-bold tracking-tight">テクノバ管理画面</span>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+      <nav aria-label="メインナビゲーション" className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
         {items.map((item) => {
           const active = isNavItemActive(item, pathname);
           return (
-            <Button
-              key={item.href}
-              asChild
-              variant="ghost"
-              className={cn(
-                'w-full justify-start gap-3 px-3',
-                active
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground'
-                  : 'text-muted-foreground',
-              )}
-            >
-              <Link href={item.href}>
-                <item.Icon />
-                {item.label}
-              </Link>
-            </Button>
+            <div key={item.href} className="relative">
+              {/* アクティブ表示は塗りつぶしピル。layoutId でタブ間を滑らせる
+                  （reduced-motion 時は静的に表示）。
+                  ライトの --sidebar-primary は前景白とのコントラストが 3.77:1 で AA 未達のため、
+                  ボトムナビと同じく light=primary / dark=sidebar-primary を使う（どちらも AA 達成）。 */}
+              {active &&
+                (prefersReduced ? (
+                  <span className="absolute inset-0 rounded-md bg-primary dark:bg-sidebar-primary" />
+                ) : (
+                  <motion.span
+                    layoutId="sidebar-active-pill"
+                    transition={navIndicatorTransition}
+                    className="absolute inset-0 rounded-md bg-primary dark:bg-sidebar-primary"
+                  />
+                ))}
+              <Button
+                asChild
+                variant="ghost"
+                className={cn(
+                  'relative w-full justify-start gap-3 px-3',
+                  active
+                    ? 'text-primary-foreground hover:bg-transparent hover:text-primary-foreground dark:text-sidebar-primary-foreground dark:hover:text-sidebar-primary-foreground'
+                    : 'text-muted-foreground',
+                )}
+              >
+                <Link href={item.href} aria-current={active ? 'page' : undefined}>
+                  <item.Icon />
+                  {item.label}
+                </Link>
+              </Button>
+            </div>
           );
         })}
       </nav>

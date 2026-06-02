@@ -33,9 +33,11 @@ import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
 import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
 import { useCallback, useEffect, useState } from 'react';
+import { AnimatedNumber } from '@/components/animated-number';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
 import { RecordCard, RecordField } from '@/components/record-card';
+import { Reveal } from '@/components/reveal';
 
 type SessionsState =
   | { kind: 'loading' }
@@ -97,42 +99,48 @@ export default function DashboardPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
-      <PageHeader
-        title="ダッシュボード"
-        description="開催日ごとのチェックイン状況を確認できます"
-        actions={
-          <>
-            <Select value={selectedDate} onValueChange={setSelectedDate}>
-              <SelectTrigger className="w-52" size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODAY_VALUE}>本日（{today}）</SelectItem>
-                {pastEvents.map((e) => (
-                  <SelectItem key={e.id} value={e.date}>
-                    {e.date}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => loadSessions(selectedDate)}
-              disabled={sessions.kind === 'loading'}
-            >
-              <IconRefresh data-icon="inline-start" />
-              更新
-            </Button>
-          </>
-        }
-      />
+      <Reveal index={0}>
+        <PageHeader
+          title="ダッシュボード"
+          description="開催日ごとのチェックイン状況を確認できます"
+          actions={
+            <>
+              <Select value={selectedDate} onValueChange={setSelectedDate}>
+                <SelectTrigger className="w-52" size="sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TODAY_VALUE}>本日（{today}）</SelectItem>
+                  {pastEvents.map((e) => (
+                    <SelectItem key={e.id} value={e.date}>
+                      {e.date}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => loadSessions(selectedDate)}
+                disabled={sessions.kind === 'loading'}
+              >
+                <IconRefresh data-icon="inline-start" />
+                更新
+              </Button>
+            </>
+          }
+        />
+      </Reveal>
 
-      <DashboardBody
-        sessions={sessions}
-        onSelectParticipant={(id) => setSelectedParticipantId(id)}
-      />
+      {/* DashboardBody はフラグメントを返すので、main の gap-6 を保つため Reveal 側で再指定する。
+          常時マウントなので入場は一度だけ（再フェッチで再生されない）。 */}
+      <Reveal index={1} className="flex flex-col gap-6">
+        <DashboardBody
+          sessions={sessions}
+          onSelectParticipant={(id) => setSelectedParticipantId(id)}
+        />
+      </Reveal>
 
       <ParticipantDetailSheet
         participantId={selectedParticipantId}
@@ -193,7 +201,6 @@ function DashboardBody({
         />
         <SummaryCard label="チェックアウト済" value={summary.checkedOut} Icon={IconLogout2} />
       </section>
-
       {/* モバイル: カードリスト */}
       <div className="flex flex-col gap-3 md:hidden">
         {rows.length === 0 ? (
@@ -237,7 +244,6 @@ function DashboardBody({
           ))
         )}
       </div>
-
       {/* デスクトップ: テーブル */}
       <Card className="hidden p-0 md:block">
         <Table>
@@ -336,7 +342,9 @@ function SummaryCard({
         <Icon className="hidden size-5 shrink-0 text-muted-foreground sm:block" />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold sm:text-3xl">{value}</div>
+        <div className="text-2xl font-bold sm:text-3xl">
+          <AnimatedNumber value={value} className="tabular-nums" />
+        </div>
       </CardContent>
     </Card>
   );

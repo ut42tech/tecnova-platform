@@ -59,6 +59,7 @@ import { toastError, toastSuccess } from '@tecnova/ui/lib/toast';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { RecordCard, RecordField } from '@/components/record-card';
+import { Reveal } from '@/components/reveal';
 
 type State =
   | { kind: 'loading' }
@@ -117,83 +118,91 @@ export default function PreRegistrationsPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
-      <PageHeader
-        title="事前登録管理"
-        description="ID未発行の事前登録を追加・削除し、ID発行済みの利用者を参照します"
-      />
+      <Reveal index={0}>
+        <PageHeader
+          title="事前登録管理"
+          description="ID未発行の事前登録を追加・削除し、ID発行済みの利用者を参照します"
+        />
+      </Reveal>
 
-      <CreatePreRegistrationForm onCreated={load} />
+      <Reveal index={1}>
+        <CreatePreRegistrationForm onCreated={load} />
+      </Reveal>
 
-      {state.kind === 'loading' && (
-        <>
-          <div className="hidden md:block">
-            <TableSkeleton columns={6} rows={8} />
-          </div>
-          <div className="flex flex-col gap-3 md:hidden">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-36 w-full" />
-            ))}
-          </div>
-        </>
-      )}
-      {state.kind === 'error' && (
-        <Alert variant="destructive">
-          <AlertTitle>読み込めませんでした</AlertTitle>
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-      )}
-
-      {state.kind === 'ok' && (
-        <>
-          {state.preRegistrations.length === 0 ? (
-            <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-              ID未発行の事前登録はありません
+      {/* データ領域。Reveal を常時マウントして入場は一度だけ（再フェッチで再生されない）。
+          フラグメントを含むので gap-6 を再指定。 */}
+      <Reveal index={2} className="flex flex-col gap-6">
+        {state.kind === 'loading' && (
+          <>
+            <div className="hidden md:block">
+              <TableSkeleton columns={6} rows={8} />
             </div>
-          ) : (
-            <>
-              {/* モバイル: カードリスト */}
-              <div className="flex flex-col gap-3 md:hidden">
-                {state.preRegistrations.map((p) => (
-                  <PreRegistrationRow
-                    key={p.preRegistrationId}
-                    item={p}
-                    onDeleted={load}
-                    variant="card"
-                  />
-                ))}
+            <div className="flex flex-col gap-3 md:hidden">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-36 w-full" />
+              ))}
+            </div>
+          </>
+        )}
+        {state.kind === 'error' && (
+          <Alert variant="destructive">
+            <AlertTitle>読み込めませんでした</AlertTitle>
+            <AlertDescription>{state.message}</AlertDescription>
+          </Alert>
+        )}
+
+        {state.kind === 'ok' && (
+          <>
+            {state.preRegistrations.length === 0 ? (
+              <div className="rounded-2xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+                ID未発行の事前登録はありません
               </div>
+            ) : (
+              <>
+                {/* モバイル: カードリスト */}
+                <div className="flex flex-col gap-3 md:hidden">
+                  {state.preRegistrations.map((p) => (
+                    <PreRegistrationRow
+                      key={p.preRegistrationId}
+                      item={p}
+                      onDeleted={load}
+                      variant="card"
+                    />
+                  ))}
+                </div>
 
-              {/* デスクトップ: テーブル */}
-              <Card className="hidden p-0 md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>事前登録ID</TableHead>
-                      <TableHead>氏名</TableHead>
-                      <TableHead>ニックネーム</TableHead>
-                      <TableHead>学年</TableHead>
-                      <TableHead>事前登録日</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {state.preRegistrations.map((p) => (
-                      <PreRegistrationRow
-                        key={p.preRegistrationId}
-                        item={p}
-                        onDeleted={load}
-                        variant="row"
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
-            </>
-          )}
+                {/* デスクトップ: テーブル */}
+                <Card className="hidden p-0 md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>事前登録ID</TableHead>
+                        <TableHead>氏名</TableHead>
+                        <TableHead>ニックネーム</TableHead>
+                        <TableHead>学年</TableHead>
+                        <TableHead>事前登録日</TableHead>
+                        <TableHead>操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {state.preRegistrations.map((p) => (
+                        <PreRegistrationRow
+                          key={p.preRegistrationId}
+                          item={p}
+                          onDeleted={load}
+                          variant="row"
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Card>
+              </>
+            )}
 
-          <ActivatedPreRegistrationsTable items={state.activatedPreRegistrations} />
-        </>
-      )}
+            <ActivatedPreRegistrationsTable items={state.activatedPreRegistrations} />
+          </>
+        )}
+      </Reveal>
     </main>
   );
 }

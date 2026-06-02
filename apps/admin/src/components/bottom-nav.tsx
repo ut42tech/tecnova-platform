@@ -2,8 +2,10 @@
 
 import { useMe } from '@tecnova/ui/components/me-provider';
 import { cn } from '@tecnova/ui/lib/utils';
+import { motion, useReducedMotion } from 'motion/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { navIndicatorTransition } from '@/lib/motion';
 import { isNavItemActive, visibleNavItems } from './nav-items';
 
 // モバイル用のボトムタブバー。画面下に固定し、iPhone のホームインジケータを
@@ -11,6 +13,7 @@ import { isNavItemActive, visibleNavItems } from './nav-items';
 export function BottomNav({ className }: { className?: string }) {
   const me = useMe();
   const pathname = usePathname();
+  const prefersReduced = useReducedMotion();
   const items = visibleNavItems(me.mentor.role);
 
   return (
@@ -36,9 +39,16 @@ export function BottomNav({ className }: { className?: string }) {
                   active ? 'text-primary dark:text-sidebar-primary' : 'text-muted-foreground',
                 )}
               >
-                {active && (
-                  <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary dark:bg-sidebar-primary" />
-                )}
+                {active &&
+                  (prefersReduced ? (
+                    <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary dark:bg-sidebar-primary" />
+                  ) : (
+                    <motion.span
+                      layoutId="bottomnav-active"
+                      transition={navIndicatorTransition}
+                      className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary dark:bg-sidebar-primary"
+                    />
+                  ))}
                 <item.Icon className="size-5" stroke={active ? 2.2 : 1.7} />
                 <span className="leading-none">{item.shortLabel}</span>
               </Link>
