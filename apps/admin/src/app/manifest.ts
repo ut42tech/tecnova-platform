@@ -14,9 +14,9 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#ffffff',
     theme_color: '#2563eb',
     lang: 'ja',
-    icons: [
-      { src: '/icon', sizes: '512x512', type: 'image/png' },
-      { src: '/favicon.ico', sizes: 'any', type: 'image/x-icon' },
-    ],
+    // 生成アイコン（app/icon.tsx）の 512px PNG を参照する。favicon.ico は
+    // ブラウザタブ用に Next が自動リンクするのでマニフェストには含めない
+    // （.ico をマニフェストアイコンにすると Chrome が不正画像として警告するため）。
+    icons: [{ src: '/icon', sizes: '512x512', type: 'image/png' }],
   };
 }

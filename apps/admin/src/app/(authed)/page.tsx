@@ -333,7 +333,7 @@ function SummaryCard({
         <CardTitle className="text-xs leading-tight font-medium text-muted-foreground sm:text-sm">
           {label}
         </CardTitle>
-        <Icon className="size-5 shrink-0 text-muted-foreground" />
+        <Icon className="hidden size-5 shrink-0 text-muted-foreground sm:block" />
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold sm:text-3xl">{value}</div>
