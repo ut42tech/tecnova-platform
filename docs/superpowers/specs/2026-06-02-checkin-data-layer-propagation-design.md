@@ -15,6 +15,7 @@ admin データ層モダナイゼーション（`docs/superpowers/specs/2026-06-
 3. **真の高価値統合は 2 つ**: (a) `useApiResource` による fetch ロジック共通化（5 箇所）、(b) ほぼ同一の **全画面 ErrorScreen 4 箇所**（first-time / history / reception / guideline）を checkin-local 共有コンポーネント 1 つへ。
 4. **`cache: 'no-store'` は不要になる**。API（`apps/api/src`）は Cache-Control 系ヘッダを一切送っておらず、freshness 情報がないためブラウザは毎回再検証する。admin の `useApiResource`（ライブな `/api/sessions` ダッシュボード）が client 側 `no-store` 無しで既に正しく動作していることがこれを裏付ける。よって checkin の明示的 `cache:'no-store'` は移行時に **削除して良い**（フックに cache オプションを足さない＝minimum first）。
 5. **`useApiResource` のキャンセルは `cancelled` フラグ**（AbortController ではない）。manual 検索を移行すると in-flight リクエストのネットワーク中断は無くなるが、最新クエリ優先の **UX は同一**（古いレスポンスは破棄）。
+6. **（A3 決定）共有フックに background reload を追加する**。history の「更新」ボタンは現在バックグラウンド更新（スケルトンを出さずデータ差し替え）で、`reload()` をそのまま使うとローディングに戻りスケルトンが一瞬出る。これを避けるため `useApiResource` に **後方互換の `reload({ background: true })`**（stale-while-revalidate）を追加する。既存呼び出し（引数なし）は挙動不変。ついでに admin の更新/ミューテーション後再取得のちらつきも解消する。
 
 ## 1. スコープ
 
@@ -23,7 +24,7 @@ admin データ層モダナイゼーション（`docs/superpowers/specs/2026-06-
 | # | ファイル | path | enabled | reload | 移行の要点 |
 |---|---------|------|---------|--------|-----------|
 | 1 | `app/first-time/page.tsx` | `'/checkin/pre-registered'` | 常時 (true) | retry ボタン → `reload()` | クリーン移行。`type State` / `useCallback(loadParticipants)` を撤去し `state.kind` で分岐。`state.kind==='ok'` の `data.participants` を使う。 |
-| 2 | `app/history/page.tsx` | `'/checkin/history/today'` | 常時 | retry → `reload()` | GET のみ移行。**60s タイマー（`nowMs` 再計算）は別 `useEffect` として残す**。bulk-checkout（POST）と `lastResult`/`error`/`isSubmitting` は現状維持。`cache:'no-store'` は削除。 |
+| 2 | `app/history/page.tsx` | `'/checkin/history/today'` | 常時 | error画面 retry → `reload()`；更新ボタン/POST後 → `reload({ background: true })` | GET のみ移行。**60s タイマー（`nowMs` 再計算）は別 `useEffect` として残す**。bulk-checkout（POST）と `lastResult`/`error`/`isSubmitting` は現状維持。`cache:'no-store'` は削除。更新ボタンと POST 後の再取得は background reload でちらつき回避（§0.6）。 |
 | 3 | `app/reception/participants/[id]/page.tsx` | `` `/checkin/participants/${participantId}` `` | `!!participantId` | （なし） | **複合ステート分離**: fetch は `useApiResource`（loading\|ok\|error）。`submitting`/`result`（attendance POST 後）は別 `useState` に切り出す。`cache:'no-store'` 削除。 |
 | 4 | `app/manual/page.tsx` | `` debouncedQuery ? `/checkin/participants/search?${new URLSearchParams({ q: debouncedQuery })}` : null `` | （path=null で idle） | （なし） | debounce(300ms) はページに残し、結果の path を `useApiResource` に渡す。**AbortController を撤去** しフックの cancelled-flag に委譲（UX 同一）。空クエリ → path=null → idle。 |
 | 5 | `app/guideline/page.tsx` | `'/checkin/pre-registered'` | `!!preRegistrationId` | retry → `reload()` | list 取得後にページ側で `participants.find(p => p.preRegistrationId === preRegistrationId)` を実行。見つからなければ **派生エラー**（ErrorScreen 表示）。`preRegistrationId` 無し（enabled=false→idle）は ErrorScreen「登録する人を選んでください。」を表示。`activating`/`result`（activate POST）は別 `useState`。 |
@@ -84,8 +85,9 @@ export function CheckinErrorScreen({
 - POST/mutation（`/checkin/history/check-out-bulk` / `/checkin/activate` / attendance）は変更しない（`useApiResource` は読み取り専用）。
 - **signage は対象外**。4 つのフック（health 30s / playlist 5min / previous-summary 1h / live counts 20s）はすべて polling + silent-degrade で `useApiResource` 非対応。現状が正しい。
 - admin の inline `DataError` / `EmptyState` は checkin に持ち込まない。
-- エンドポイント・debounce(300ms)・ルーティング・motion・キオスク UX・表示文言は不変。
-- `useApiResource` のシグネチャは変更しない（cache オプション等を足さない）。
+- エンドポイント・debounce(300ms)・ルーティング・motion・キオスク UX・表示文言は不変（history 更新の成功時も従来どおりちらつき無し。背景更新の失敗時のみ全画面エラーになる点は §0.6 / 受容）。
+- `useApiResource` の変更は **後方互換の `reload({ background })` 追加のみ**（A3、§0.6）。cache オプションは足さない。既存呼び出しは引数なしのため挙動不変。
+- **（A3 のオプトイン）admin の `reload()` 呼び出し 6 箇所**（dashboard 更新ボタン + mentors/pre-registrations のミューテーション後再取得）を `background: true` に更新し、admin 側のちらつきも解消する。初回取得・path 駆動の再取得（検索/フィルタ/ページング/日付）は変更しない。
 
 ## 3. 実装上の注意（落とし穴）
 
@@ -98,10 +100,11 @@ export function CheckinErrorScreen({
 
 - **依存**: PR #43（`useApiResource` 等）は **`develop` へマージ済み**（`develop` @ `39d969b`）。本ブランチ `refactor/checkin-data-layer` は最新 `develop` から分岐済みで、`useApiResource` を直接利用できる。**実装はすぐ着手可能**。
 - **ブランチ/PR**: 単一 `refactor/checkin-data-layer` → `develop` に 1 本の PR（**スタックしない**。#40-43 のスタック誤マージ＝兄弟ブランチ同士でマージされ develop に届かなかった反省を踏まえる）。
-- **コミット**: 論理単位で分割（spec → 共有 `CheckinErrorScreen` 追加 → 各ページ移行を数コミット）。
+- **コミット**: 論理単位で分割（フック background reload 追加 → 共有 `CheckinErrorScreen` 追加 → 各ページ移行を数コミット → admin の reload 更新）。
 - **検証**:
-  - `pnpm --filter checkin --filter @tecnova/ui type-check` green。
-  - `pnpm biome check apps/checkin/src` green。
+  - `pnpm --filter @tecnova/ui --filter checkin --filter admin type-check` green。
+  - `pnpm biome check packages/ui/src apps/checkin/src apps/admin/src` green。
+  - history の更新ボタン・admin の更新/ミューテーション後再取得が **スケルトンを出さず** 差し替わること（background reload）。既存呼び出し（引数なし）の挙動が不変であること。
   - Playwright（`/api/me` + 各 GET をモック）で 5 フローの load / error / retry / empty、manual の idle/検索/空、reception/guideline の取得後の操作（POST）が従来どおり動くことを確認。特に `reload()` / 画面遷移後に **最新データが返る** こと（no-store 削除の影響確認）。
   - 各ページから手書き fetch ステートマシン（`type State` の fetch 部分 / fetch 用 `useEffect`）が消えていること。
 
