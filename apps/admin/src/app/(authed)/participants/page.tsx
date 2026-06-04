@@ -2,10 +2,11 @@
 
 import { IconSearch, IconX } from '@tabler/icons-react';
 import { GRADES, type Grade, type ParticipantsListResponse } from '@tecnova/shared/schemas';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card } from '@tecnova/ui/components/card';
+import { DataError } from '@tecnova/ui/components/data-error';
+import { EmptyState } from '@tecnova/ui/components/empty-state';
 import { Input } from '@tecnova/ui/components/input';
 import {
   Select,
@@ -14,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@tecnova/ui/components/select';
+import { Skeleton } from '@tecnova/ui/components/skeleton';
 import {
   Table,
   TableBody,
@@ -23,16 +25,13 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
-import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { formatJstDate } from '@tecnova/ui/lib/format';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
-
-type State =
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: ParticipantsListResponse }
-  | { kind: 'error'; message: string };
+import { RecordCard, RecordField } from '@/components/record-card';
+import { Reveal } from '@/components/reveal';
 
 const PAGE_SIZE = 50;
 
@@ -41,7 +40,6 @@ const ANY_GRADE = '__any_grade__';
 const ANY_ACTIVE = '__any_active__';
 
 export default function ParticipantsPage() {
-  const [state, setState] = useState<State>({ kind: 'loading' });
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [grade, setGrade] = useState<string>(ANY_GRADE);
@@ -70,36 +68,27 @@ export default function ParticipantsPage() {
     setPage(1);
   };
 
-  useEffect(() => {
-    void (async () => {
-      setState({ kind: 'loading' });
-      try {
-        const params = new URLSearchParams({
-          page: String(page),
-          limit: String(PAGE_SIZE),
-        });
-        if (debouncedSearch) params.set('search', debouncedSearch);
-        if (grade !== ANY_GRADE) params.set('grade', grade);
-        if (activeFilter !== ANY_ACTIVE) params.set('active', activeFilter);
-        const data = await apiJson<ParticipantsListResponse>(
-          `/api/participants?${params.toString()}`,
-        );
-        setState({ kind: 'ok', data });
-      } catch (e) {
-        setState({ kind: 'error', message: apiErrorMessage(e) });
-      }
-    })();
-  }, [debouncedSearch, page, grade, activeFilter]);
+  // クエリを path に組み立てる。page/検索/フィルタが変わると path が変わり、
+  // useApiResource が自動で再取得する。
+  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  if (debouncedSearch) params.set('search', debouncedSearch);
+  if (grade !== ANY_GRADE) params.set('grade', grade);
+  if (activeFilter !== ANY_ACTIVE) params.set('active', activeFilter);
+  const { state } = useApiResource<ParticipantsListResponse>(
+    `/api/participants?${params.toString()}`,
+  );
 
   const totalPages =
     state.kind === 'ok' ? Math.max(1, Math.ceil(state.data.pagination.total / PAGE_SIZE)) : 1;
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
-      <PageHeader title="利用者一覧" description="ID発行済みの利用者を検索・フィルタできます" />
+      <Reveal index={0}>
+        <PageHeader title="利用者一覧" description="ID発行済みの利用者を検索・フィルタできます" />
+      </Reveal>
 
-      <section className="flex flex-wrap items-end gap-3">
-        <div className="relative max-w-xs flex-1">
+      <Reveal index={1} className="flex flex-wrap items-end gap-3">
+        <div className="relative w-full sm:max-w-xs sm:flex-1">
           <IconSearch
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden
@@ -149,107 +138,151 @@ export default function ParticipantsPage() {
             <SelectItem value="false">無効</SelectItem>
           </SelectContent>
         </Select>
-      </section>
+      </Reveal>
 
-      {state.kind === 'loading' && <TableSkeleton columns={6} rows={10} />}
+      {/* loading/error/ok を切り替えるデータ領域。Reveal を常時マウントして入場は一度だけにする
+          （検索のたびに再生されない）。フラグメントを含むので gap-6 を再指定。 */}
+      <Reveal index={2} className="flex flex-col gap-6">
+        {state.kind === 'loading' && (
+          <>
+            <div className="hidden md:block">
+              <TableSkeleton columns={6} rows={10} />
+            </div>
+            <div className="flex flex-col gap-3 md:hidden">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+          </>
+        )}
 
-      {state.kind === 'error' && (
-        <Alert variant="destructive">
-          <AlertTitle>読み込めませんでした</AlertTitle>
-          <AlertDescription>{state.message}</AlertDescription>
-        </Alert>
-      )}
+        {state.kind === 'error' && <DataError message={state.message} />}
 
-      {state.kind === 'ok' && (
-        <>
-          <Card className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>氏名</TableHead>
-                  <TableHead>ニックネーム</TableHead>
-                  <TableHead>学年</TableHead>
-                  <TableHead>ID発行日</TableHead>
-                  <TableHead>状態</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {state.data.participants.length === 0 ? (
+        {state.kind === 'ok' && (
+          <>
+            {/* モバイル: カードリスト */}
+            <div className="flex flex-col gap-3 md:hidden">
+              {state.data.participants.length === 0 ? (
+                <EmptyState message="該当する利用者が見つかりません" />
+              ) : (
+                state.data.participants.map((p) => (
+                  <RecordCard
+                    key={p.id}
+                    onClick={() => setSelectedParticipantId(p.id)}
+                    ariaLabel={`${p.nickname}（${p.grade}・${p.active ? '有効' : '無効'}）の詳細を開く`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{p.nickname}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {p.fullName}・{p.grade}
+                        </p>
+                      </div>
+                      <Badge variant={p.active ? 'default' : 'secondary'}>
+                        {p.active ? '有効' : '無効'}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <RecordField label="ID">
+                        <span className="font-mono text-xs">{p.id}</span>
+                      </RecordField>
+                      <RecordField label="ID発行日">{formatJstDate(p.activatedAt)}</RecordField>
+                    </div>
+                  </RecordCard>
+                ))
+              )}
+            </div>
+
+            {/* デスクトップ: テーブル */}
+            <Card className="hidden p-0 md:block">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell className="py-10 text-center text-muted-foreground" colSpan={6}>
-                      該当する利用者が見つかりません
-                    </TableCell>
+                    <TableHead>ID</TableHead>
+                    <TableHead>氏名</TableHead>
+                    <TableHead>ニックネーム</TableHead>
+                    <TableHead>学年</TableHead>
+                    <TableHead>ID発行日</TableHead>
+                    <TableHead>状態</TableHead>
                   </TableRow>
-                ) : (
-                  state.data.participants.map((p) => (
-                    <TableRow
-                      key={p.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedParticipantId(p.id)}
-                    >
-                      <TableCell className="font-mono">{p.id}</TableCell>
-                      <TableCell>{p.fullName}</TableCell>
-                      <TableCell>{p.nickname}</TableCell>
-                      <TableCell>{p.grade}</TableCell>
-                      <TableCell>{formatJstDate(p.activatedAt)}</TableCell>
-                      <TableCell>
-                        <Badge variant={p.active ? 'default' : 'secondary'}>
-                          {p.active ? '有効' : '無効'}
-                        </Badge>
+                </TableHeader>
+                <TableBody>
+                  {state.data.participants.length === 0 ? (
+                    <TableRow>
+                      <TableCell className="py-10 text-center text-muted-foreground" colSpan={6}>
+                        該当する利用者が見つかりません
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </Card>
+                  ) : (
+                    state.data.participants.map((p) => (
+                      <TableRow
+                        key={p.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedParticipantId(p.id)}
+                      >
+                        <TableCell className="font-mono">{p.id}</TableCell>
+                        <TableCell>{p.fullName}</TableCell>
+                        <TableCell>{p.nickname}</TableCell>
+                        <TableCell>{p.grade}</TableCell>
+                        <TableCell>{formatJstDate(p.activatedAt)}</TableCell>
+                        <TableCell>
+                          <Badge variant={p.active ? 'default' : 'secondary'}>
+                            {p.active ? '有効' : '無効'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
 
-          <section className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-            <span>
-              全 {state.data.pagination.total} 件 ・ {page} / {totalPages} ページ
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setPage(1)}
-                disabled={page <= 1}
-              >
-                最初へ
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-              >
-                前へ
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-              >
-                次へ
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setPage(totalPages)}
-                disabled={page >= totalPages}
-              >
-                最後へ
-              </Button>
-            </div>
-          </section>
-        </>
-      )}
+            <section className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+              <span>
+                全 {state.data.pagination.total} 件 ・ {page} / {totalPages} ページ
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(1)}
+                  disabled={page <= 1}
+                >
+                  最初へ
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  前へ
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  次へ
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(totalPages)}
+                  disabled={page >= totalPages}
+                >
+                  最後へ
+                </Button>
+              </div>
+            </section>
+          </>
+        )}
+      </Reveal>
 
       <ParticipantDetailSheet
         participantId={selectedParticipantId}

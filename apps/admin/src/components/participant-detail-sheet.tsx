@@ -1,8 +1,8 @@
 'use client';
 
 import type { ParticipantProfileResponse } from '@tecnova/shared/schemas';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Badge } from '@tecnova/ui/components/badge';
+import { DataError } from '@tecnova/ui/components/data-error';
 import {
   Sheet,
   SheetContent,
@@ -20,20 +20,13 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TermBadge } from '@tecnova/ui/components/term-badge';
-import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { formatJstDate } from '@tecnova/ui/lib/format';
-import { useEffect, useState } from 'react';
 
 interface Props {
   participantId: string | null;
   onOpenChange: (open: boolean) => void;
 }
-
-type State =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: ParticipantProfileResponse }
-  | { kind: 'error'; message: string };
 
 // ISO 文字列を JST の 'YYYY/MM/DD HH:mm' に整形する。空なら '—'。
 const fmtDateTime = (iso: string | null): string => {
@@ -69,30 +62,11 @@ const fmtMinutes = (minutes: number | null): string => {
 };
 
 export function ParticipantDetailSheet({ participantId, onOpenChange }: Props) {
-  const [state, setState] = useState<State>({ kind: 'idle' });
   const open = participantId !== null;
-
-  useEffect(() => {
-    if (!participantId) {
-      setState({ kind: 'idle' });
-      return;
-    }
-    let cancelled = false;
-    setState({ kind: 'loading' });
-    void (async () => {
-      try {
-        const data = await apiJson<ParticipantProfileResponse>(
-          `/checkin/participants/${encodeURIComponent(participantId)}`,
-        );
-        if (!cancelled) setState({ kind: 'ok', data });
-      } catch (e) {
-        if (!cancelled) setState({ kind: 'error', message: apiErrorMessage(e) });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [participantId]);
+  // 開いているあいだだけ取得する（閉じている＝path=null で idle）。
+  const { state } = useApiResource<ParticipantProfileResponse>(
+    participantId ? `/checkin/participants/${encodeURIComponent(participantId)}` : null,
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -110,18 +84,32 @@ export function ParticipantDetailSheet({ participantId, onOpenChange }: Props) {
 
         <div className="flex flex-col gap-6 px-6 pb-8">
           {state.kind === 'loading' && (
+            // 実コンテンツ（DetailBody）と同じ骨格のプレースホルダにして、
+            // 読み込み完了時のレイアウトの飛びをなくす。
             <>
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-40 w-full" />
+              <section className="grid gap-3 rounded-lg border bg-card p-4">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-5 w-16 rounded-full" />
+                  <Skeleton className="h-3.5 w-24" />
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <Skeleton key={i} className={i % 2 === 0 ? 'h-4 w-20' : 'h-4 w-full'} />
+                  ))}
+                </div>
+              </section>
+              <section className="flex flex-col gap-2">
+                <Skeleton className="h-4 w-20" />
+                <div className="flex flex-col gap-2 rounded-lg border p-3">
+                  {[0, 1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-6 w-full" />
+                  ))}
+                </div>
+              </section>
             </>
           )}
 
-          {state.kind === 'error' && (
-            <Alert variant="destructive">
-              <AlertTitle>読み込めませんでした</AlertTitle>
-              <AlertDescription>{state.message}</AlertDescription>
-            </Alert>
-          )}
+          {state.kind === 'error' && <DataError message={state.message} />}
 
           {state.kind === 'ok' && <DetailBody data={state.data} />}
         </div>

@@ -38,7 +38,7 @@ tecnova-platform/
 ├── apps/                # エンドユーザー向けアプリ
 │   ├── api/             # Hono on Cloudflare Workers
 │   ├── checkin/         # Next.js iPad PWA（受付端末）
-│   ├── admin/           # Next.js 管理PC画面
+│   ├── admin/           # Next.js 管理画面（PC・モバイル / PWA）
 │   └── signage/         # Next.js 会場サイネージ（大型モニター・キオスク）
 ├── packages/            # アプリ間で共有するライブラリ
 │   ├── db/              # Drizzle schema・migrations

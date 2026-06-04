@@ -7,13 +7,18 @@ import {
   IconInfoCircle,
   IconLoader,
 } from '@tabler/icons-react';
+import { useTheme } from 'next-themes';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 
-// 管理画面はテーマ切替を持たないので next-themes を使わず light 固定にする。
+// アクティブなテーマに追従させる。ThemeProvider をツリーに持たないアプリ
+// （checkin / signage）では resolvedTheme が undefined になるため light に
+// フォールバックし、従来どおりの表示を保つ。
 const Toaster = ({ ...props }: ToasterProps) => {
+  const { resolvedTheme } = useTheme();
+  const theme = (resolvedTheme ?? 'light') as ToasterProps['theme'];
   return (
     <Sonner
-      theme="light"
+      theme={theme}
       className="toaster group"
       icons={{
         success: <IconCircleCheck className="size-4" />,

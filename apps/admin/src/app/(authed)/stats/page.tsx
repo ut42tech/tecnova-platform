@@ -9,9 +9,9 @@ import {
   IconSunset2,
 } from '@tabler/icons-react';
 import type { ParticipationSummaryResponse } from '@tecnova/shared/schemas';
-import { Alert, AlertDescription, AlertTitle } from '@tecnova/ui/components/alert';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
+import { DataError } from '@tecnova/ui/components/data-error';
 import { Input } from '@tecnova/ui/components/input';
 import { Skeleton } from '@tecnova/ui/components/skeleton';
 import {
@@ -23,19 +23,15 @@ import {
   TableRow,
 } from '@tecnova/ui/components/table';
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
-import { apiErrorMessage, apiJson } from '@tecnova/ui/lib/api-client';
+import { type ResourceState, useApiResource } from '@tecnova/ui/hooks/use-api-resource';
 import { formatJstDate } from '@tecnova/ui/lib/format';
 import { cn } from '@tecnova/ui/lib/utils';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { AnimatedNumber } from '@/components/animated-number';
 import { PageHeader } from '@/components/page-header';
-
-type SummaryState =
-  | { kind: 'loading' }
-  | { kind: 'ok'; data: ParticipationSummaryResponse }
-  | { kind: 'error'; message: string };
+import { Reveal } from '@/components/reveal';
 
 export default function StatsPage() {
-  const [summary, setSummary] = useState<SummaryState>({ kind: 'loading' });
   // 入力中の値（適用ボタンを押すまで反映しない）。空文字 = フィルタなし。
   const [fromInput, setFromInput] = useState('');
   const [toInput, setToInput] = useState('');
@@ -43,24 +39,14 @@ export default function StatsPage() {
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
 
-  const loadSummary = useCallback(async (from: string, to: string) => {
-    setSummary({ kind: 'loading' });
-    try {
-      const params = new URLSearchParams();
-      if (from) params.set('from', from);
-      if (to) params.set('to', to);
-      const query = params.toString();
-      const path = query ? `/api/stats/participation?${query}` : '/api/stats/participation';
-      const data = await apiJson<ParticipationSummaryResponse>(path);
-      setSummary({ kind: 'ok', data });
-    } catch (e) {
-      setSummary({ kind: 'error', message: apiErrorMessage(e) });
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadSummary(appliedFrom, appliedTo);
-  }, [appliedFrom, appliedTo, loadSummary]);
+  // 確定レンジを path に組み立てる。適用/全期間で path が変わり自動再取得される。
+  const rangeParams = new URLSearchParams();
+  if (appliedFrom) rangeParams.set('from', appliedFrom);
+  if (appliedTo) rangeParams.set('to', appliedTo);
+  const rangeQuery = rangeParams.toString();
+  const summary = useApiResource<ParticipationSummaryResponse>(
+    rangeQuery ? `/api/stats/participation?${rangeQuery}` : '/api/stats/participation',
+  );
 
   const applyFilter = () => {
     setAppliedFrom(fromInput);
@@ -78,55 +64,60 @@ export default function StatsPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
-      <PageHeader
-        title="集計"
-        description="ターム単位の参加回数を期間で集計します"
-        actions={
-          <>
-            <Input
-              type="date"
-              aria-label="集計開始日"
-              value={fromInput}
-              max={toInput || undefined}
-              onChange={(e) => setFromInput(e.target.value)}
-              className="w-40"
-            />
-            <span className="text-sm text-muted-foreground">〜</span>
-            <Input
-              type="date"
-              aria-label="集計終了日"
-              value={toInput}
-              min={fromInput || undefined}
-              onChange={(e) => setToInput(e.target.value)}
-              className="w-40"
-            />
-            <Button
-              type="button"
-              size="sm"
-              onClick={applyFilter}
-              disabled={summary.kind === 'loading'}
-            >
-              適用
-            </Button>
-            {hasFilter && (
-              <Button type="button" variant="outline" size="sm" onClick={clearFilter}>
-                全期間
+      <Reveal index={0}>
+        <PageHeader
+          title="集計"
+          description="ターム単位の参加回数を期間で集計します"
+          actions={
+            <>
+              <Input
+                type="date"
+                aria-label="集計開始日"
+                value={fromInput}
+                max={toInput || undefined}
+                onChange={(e) => setFromInput(e.target.value)}
+                className="w-40"
+              />
+              <span className="text-sm text-muted-foreground">〜</span>
+              <Input
+                type="date"
+                aria-label="集計終了日"
+                value={toInput}
+                min={fromInput || undefined}
+                onChange={(e) => setToInput(e.target.value)}
+                className="w-40"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={applyFilter}
+                disabled={summary.state.kind === 'loading'}
+              >
+                適用
               </Button>
-            )}
-          </>
-        }
-      />
+              {hasFilter && (
+                <Button type="button" variant="outline" size="sm" onClick={clearFilter}>
+                  全期間
+                </Button>
+              )}
+            </>
+          }
+        />
+      </Reveal>
 
-      <StatsBody summary={summary} />
+      {/* StatsBody はフラグメントを返すので、main の gap-6 を保つため Reveal 側で再指定する。 */}
+      <Reveal index={1} className="flex flex-col gap-6">
+        <StatsBody summary={summary.state} />
+      </Reveal>
     </main>
   );
 }
 
-function StatsBody({ summary }: { summary: SummaryState }) {
-  if (summary.kind === 'loading') {
+function StatsBody({ summary }: { summary: ResourceState<ParticipationSummaryResponse> }) {
+  if (summary.kind === 'loading' || summary.kind === 'idle') {
     return (
       <>
-        <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
@@ -139,20 +130,20 @@ function StatsBody({ summary }: { summary: SummaryState }) {
   }
 
   if (summary.kind === 'error') {
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>集計を読み込めませんでした</AlertTitle>
-        <AlertDescription>{summary.message}</AlertDescription>
-      </Alert>
-    );
+    return <DataError title="集計を読み込めませんでした" message={summary.message} />;
   }
 
   const { totals, byDate } = summary.data;
 
   return (
     <>
-      <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-        <SummaryCard label="総参加回数" value={totals.total} Icon={IconChartBar} />
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-5">
+        <SummaryCard
+          label="総参加回数"
+          value={totals.total}
+          Icon={IconChartBar}
+          className="col-span-2 md:col-span-1"
+        />
         <SummaryCard
           label="朝"
           value={totals.morning}
@@ -218,20 +209,28 @@ function SummaryCard({
   value,
   Icon,
   iconClassName,
+  className,
 }: {
   label: string;
   value: number;
   Icon: typeof IconChartBar;
   iconClassName?: string;
+  className?: string;
 }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <Icon className={cn('size-5 text-muted-foreground', iconClassName)} />
+    <Card className={className}>
+      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
+        <CardTitle className="text-xs leading-tight font-medium text-muted-foreground sm:text-sm">
+          {label}
+        </CardTitle>
+        <Icon
+          className={cn('hidden size-5 shrink-0 text-muted-foreground sm:block', iconClassName)}
+        />
       </CardHeader>
       <CardContent>
-        <div className="text-3xl font-bold">{value}</div>
+        <div className="text-2xl font-bold sm:text-3xl">
+          <AnimatedNumber value={value} className="tabular-nums" />
+        </div>
       </CardContent>
     </Card>
   );
