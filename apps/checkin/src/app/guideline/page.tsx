@@ -4,26 +4,20 @@ import {
   IconArrowLeft,
   IconBook,
   IconBottle,
-  IconCameraOff,
+  IconCar,
+  IconChartBar,
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconCircleCheck,
   IconClipboardCheck,
-  IconClock,
-  IconCloudDownload,
   IconDoorExit,
-  IconFirstAidKit,
-  IconHandStop,
   IconHeartHandshake,
   IconHome,
-  IconHomeQuestion,
-  IconIdBadge,
   IconMessageCircleX,
-  IconMessages,
-  IconParkingOff,
   IconRefresh,
   IconShieldCheck,
+  IconTargetArrow,
   IconTools,
   IconUsersGroup,
 } from '@tabler/icons-react';
@@ -50,7 +44,6 @@ import { PanelHeader } from '@/components/panel-header';
 import { ResultSummaryCard } from '@/components/result-summary-card';
 import { CheckinErrorScreen } from '@/components/screen-error';
 import { formatJapaneseDate, formatJapaneseDateTime } from '@/lib/format';
-import { popAnimate, popInitial, popTransition } from '@/lib/motion';
 
 // 取得（pre-registered 一覧）は useApiResource。ここはアクティベート POST の
 // ワークフロー状態のみ（取得状態とは分離）。
@@ -64,272 +57,139 @@ type GuidelineTone = 'emerald' | 'sky' | 'amber' | 'rose' | 'slate';
 
 type GuidelineSlide = {
   section: string;
-  group: string;
-  number: number;
-  title: string;
+  label: string;
   rule: string;
-  explanation: string;
-  visual: string;
   tone: GuidelineTone;
   icon: ReactNode;
 };
 
+// 左に「アイコン＋タイトル」の1枚カード、右に本文。色はトーンで穏やかに差をつける。
+// chip=セクション札 / card=左カードの淡背景＋枠 / iconCircle=カード内アイコン円 / kicker=タイトル色 / bar=進捗
 const guidelineToneClasses: Record<
   GuidelineTone,
-  { badge: string; panel: string; icon: string; progress: string }
+  { chip: string; card: string; iconCircle: string; kicker: string; bar: string }
 > = {
   emerald: {
-    badge: 'bg-emerald-100 text-emerald-700',
-    panel: 'border-emerald-200 bg-emerald-50 text-emerald-950',
-    icon: 'bg-emerald-100 text-emerald-700',
-    progress: 'bg-emerald-500',
+    chip: 'bg-emerald-100 text-emerald-700',
+    card: 'border-emerald-100 bg-emerald-50',
+    iconCircle: 'bg-white text-emerald-600 ring-1 ring-emerald-100',
+    kicker: 'text-emerald-700',
+    bar: 'bg-emerald-500',
   },
   sky: {
-    badge: 'bg-sky-100 text-sky-700',
-    panel: 'border-sky-200 bg-sky-50 text-sky-950',
-    icon: 'bg-sky-100 text-sky-700',
-    progress: 'bg-sky-500',
+    chip: 'bg-sky-100 text-sky-700',
+    card: 'border-sky-100 bg-sky-50',
+    iconCircle: 'bg-white text-sky-600 ring-1 ring-sky-100',
+    kicker: 'text-sky-700',
+    bar: 'bg-sky-500',
   },
   amber: {
-    badge: 'bg-amber-100 text-amber-700',
-    panel: 'border-amber-200 bg-amber-50 text-amber-950',
-    icon: 'bg-amber-100 text-amber-700',
-    progress: 'bg-amber-500',
+    chip: 'bg-amber-100 text-amber-800',
+    card: 'border-amber-100 bg-amber-50',
+    iconCircle: 'bg-white text-amber-600 ring-1 ring-amber-100',
+    kicker: 'text-amber-700',
+    bar: 'bg-amber-500',
   },
   rose: {
-    badge: 'bg-rose-100 text-rose-700',
-    panel: 'border-rose-200 bg-rose-50 text-rose-950',
-    icon: 'bg-rose-100 text-rose-700',
-    progress: 'bg-rose-500',
+    chip: 'bg-rose-100 text-rose-700',
+    card: 'border-rose-100 bg-rose-50',
+    iconCircle: 'bg-white text-rose-600 ring-1 ring-rose-100',
+    kicker: 'text-rose-700',
+    bar: 'bg-rose-500',
   },
   slate: {
-    badge: 'bg-slate-100 text-slate-700',
-    panel: 'border-slate-200 bg-slate-50 text-slate-950',
-    icon: 'bg-slate-100 text-slate-700',
-    progress: 'bg-slate-500',
+    chip: 'bg-slate-200 text-slate-700',
+    card: 'border-slate-200 bg-slate-50',
+    iconCircle: 'bg-white text-slate-600 ring-1 ring-slate-200',
+    kicker: 'text-slate-700',
+    bar: 'bg-slate-500',
   },
 };
 
 const GUIDELINE_SLIDES: GuidelineSlide[] = [
   {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 1,
-    title: '機材はゆずり合って使う',
-    rule: '機材はゆずり合って大切に使い、使ったものは元の場所に片付けましょう。',
-    explanation:
-      '使いたい人が待っているかもしれません。使い終わったら、次の人がすぐ使える状態に戻します。',
-    visual: '使う、戻す、次の人へ。',
-    tone: 'emerald',
-    icon: <IconTools className="size-16" />,
-  },
-  {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 2,
-    title: '作品と人を大切にする',
-    rule: '他の人の作るものを大切にして、お互いのことを尊重しましょう。',
-    explanation:
-      '作品はその人のアイデアです。触る前に聞いて、よいところを見つける姿勢で関わります。',
-    visual: '作品にも、人にも、ていねいに。',
-    tone: 'emerald',
-    icon: <IconHeartHandshake className="size-16" />,
-  },
-  {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 3,
-    title: '作業をじゃましない',
-    rule: '他の人の作業をじゃましたり、ばかにしたりしないようにしましょう。',
-    explanation:
-      '集中している人の手元や画面に急に触らない。うまくいかない時も、からかわずに見守ります。',
-    visual: '集中している人には、少し距離をとる。',
-    tone: 'amber',
-    icon: <IconHandStop className="size-16" />,
-  },
-  {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 4,
-    title: '傷つける言葉を使わない',
-    rule: '人を傷つける、差別する、怒らせるようなことはやめましょう。',
-    explanation:
-      '言葉や態度で相手が嫌な気持ちになることがあります。迷ったら、言う前にスタッフへ相談します。',
-    visual: 'その言葉で相手が安心できるか考える。',
-    tone: 'rose',
-    icon: <IconShieldCheck className="size-16" />,
-  },
-  {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 5,
-    title: 'ケンカになったら大人へ',
-    rule: 'ケンカはやめましょう。自分たちで解決できない問題が起こったら、大人に相談しましょう。',
-    explanation:
-      '困ったことを無理に自分たちだけで解決しなくて大丈夫です。近くのスタッフに状況を伝えます。',
-    visual: 'こまったら、止まって、話して、相談。',
-    tone: 'sky',
-    icon: <IconMessages className="size-16" />,
-  },
-  {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 6,
-    title: 'ダウンロード前に聞く',
-    rule: '何かをダウンロードまたはアップロードするときは、かならずスタッフに聞きましょう。',
-    explanation:
-      'ネット上のファイルには危険なものや公開してはいけないものがあります。操作する前に確認します。',
-    visual: '保存する前、送る前にスタッフ確認。',
-    tone: 'sky',
-    icon: <IconCloudDownload className="size-16" />,
-  },
-  {
-    section: '参加にあたって',
-    group: 'テクノバの決まりごと',
-    number: 7,
-    title: '安全に機材を使う',
-    rule: 'ケガにつながる機材もあるので、スタッフの注意を聞いて安全に使いましょう。',
-    explanation:
-      '熱い、動く、切れる機材があります。スタッフの説明を聞いてから、決められた使い方を守ります。',
-    visual: '説明を聞く、確認する、ゆっくり使う。',
-    tone: 'amber',
-    icon: <IconFirstAidKit className="size-16" />,
-  },
-  {
-    section: '守ってほしいこと',
-    group: '利用の流れ',
-    number: 1,
-    title: '利用者カードを持ってくる',
-    rule: '初回利用時に利用者カードをお渡しします。無くさないようにして、利用時は必ず持って来てください。',
-    explanation: 'カードは受付のための大切なものです。なくした時は、受付でスタッフに伝えます。',
-    visual: 'カードはテクノバに来る時の持ちもの。',
-    tone: 'emerald',
-    icon: <IconIdBadge className="size-16" />,
-  },
-  {
-    section: '守ってほしいこと',
-    group: '利用の流れ',
-    number: 2,
-    title: '受付して名札をつける',
-    rule: '利用する際は受付をして、名札を着用してください。',
-    explanation: '受付で今日来ていることが分かるようにします。名札はスタッフが声をかける目印です。',
-    visual: '来たら受付、活動中は名札。',
+    section: 'テクノバでのすごしかた',
+    label: '受付と名札',
+    rule: '到着したら受付をして、初回に作成したテクノバファイルを受け取り、ネームカードを着用してください。',
     tone: 'sky',
     icon: <IconClipboardCheck className="size-16" />,
   },
   {
-    section: '守ってほしいこと',
-    group: '利用の流れ',
-    number: 3,
-    title: '帰る前に報告する',
-    rule: '帰る際はアンケートに回答して、スタッフに報告をし、名札ケースを置いて帰ってください。',
-    explanation:
-      '帰る時はチェックアウトの合図が必要です。アンケートと名札ケースまで終わったら帰れます。',
-    visual: 'アンケート、報告、名札ケース。',
+    section: 'テクノバでのすごしかた',
+    label: '活動の記録',
+    rule: '毎回の活動時には「目標設定」と「振り返り」を記録しましょう。',
     tone: 'emerald',
+    icon: <IconTargetArrow className="size-16" />,
+  },
+  {
+    section: 'テクノバでのすごしかた',
+    label: '途中退室',
+    rule: '一時的に部屋から出るときは、必ずメンターに伝えてください。',
+    tone: 'sky',
     icon: <IconDoorExit className="size-16" />,
   },
   {
-    section: '守ってほしいこと',
-    group: '安全な帰り方',
-    number: 4,
-    title: '遅い時間は迎えに来てもらう',
-    rule: '遅い時間帯（小学生の場合は18時以降）に参加する際は、迎えに来てもらってください。',
-    explanation: '暗い時間の帰り道は危険が増えます。小学生は18時以降、保護者の迎えを確認します。',
-    visual: '18時以降の小学生は、お迎え確認。',
+    section: 'テクノバでのすごしかた',
+    label: 'かえるとき',
+    rule: 'かえるときは活動内容を記録してメンターに報告し、テクノバファイルとネームカードを置いてかえってください。',
+    tone: 'emerald',
+    icon: <IconHome className="size-16" />,
+  },
+  {
+    section: 'テクノバでのすごしかた',
+    label: '人を大切に',
+    rule: '人を傷つけたり、怒らせるようなことはやめましょう。ケンカなど自分たちで解決できない問題が起きたら、すぐに先生やメンターに相談してください。',
+    tone: 'rose',
+    icon: <IconHeartHandshake className="size-16" />,
+  },
+  {
+    section: 'テクノバでのすごしかた',
+    label: '物を大切に',
+    rule: '作品や機材を大切にしましょう。機材はゆずり合って使い、使ったものは必ず元の場所に片付けましょう。',
+    tone: 'emerald',
+    icon: <IconTools className="size-16" />,
+  },
+  {
+    section: 'テクノバでのすごしかた',
+    label: '安全な利用',
+    rule: 'ケガにつながる機材もあるので、メンターの注意をよく聞いて安全に使いましょう。何かをダウンロード・アップロードするときは、かならずメンターに聞いてください。',
     tone: 'amber',
-    icon: <IconClock className="size-16" />,
+    icon: <IconShieldCheck className="size-16" />,
   },
   {
-    section: '守ってほしいこと',
-    group: '安全な過ごし方',
-    number: 5,
-    title: '建物から出る時は報告する',
-    rule: 'トイレ以外で途中退室する（建物から出る）際はスタッフに報告してください（名札は置いていく）。',
-    explanation:
-      'スタッフが今どこにいるか分かるようにします。外へ出る時は、名札を置いてから伝えます。',
-    visual: '建物を出る前に、スタッフへ一声。',
-    tone: 'sky',
-    icon: <IconHomeQuestion className="size-16" />,
-  },
-  {
-    section: '守ってほしいこと',
-    group: '連絡先とSNS',
-    number: 6,
-    title: '連絡先を交換しない',
-    rule: 'トラブル防止のため、スタッフと利用者のSNS等連絡先の交換を禁止します。',
-    explanation: 'スタッフとはテクノバの中で話します。個人のSNSや連絡先は交換しません。',
-    visual: 'SNS交換はしない。',
-    tone: 'rose',
-    icon: <IconMessageCircleX className="size-16" />,
-  },
-  {
-    section: '守ってほしいこと',
-    group: '連絡先とSNS',
-    number: 7,
-    title: '人や作品を勝手に投稿しない',
-    rule: 'SNSで他の人の姿や作品などを投稿しないでください。',
-    explanation:
-      '写真や作品には本人の大切な情報が含まれます。投稿したい時は、必ずスタッフに相談します。',
-    visual: '撮る前、載せる前に確認。',
-    tone: 'rose',
-    icon: <IconCameraOff className="size-16" />,
-  },
-  {
-    section: '守ってほしいこと',
-    group: '体調管理',
-    number: 8,
-    title: '飲み物を持ってくる',
-    rule: '熱中症対策のために、飲み物を持参しましょう。',
-    explanation:
-      '活動に集中すると水分を忘れやすくなります。自分の飲み物を持って、こまめに飲みます。',
-    visual: '作る時間にも、水分補給。',
+    section: 'テクノバでのすごしかた',
+    label: '体調管理',
+    rule: '熱中症対策のために、飲み物を持参しましょう。1時間に1回は休憩しましょう。',
     tone: 'sky',
     icon: <IconBottle className="size-16" />,
   },
   {
     section: '保護者の方へ',
-    group: '送迎等',
-    number: 1,
-    title: '遅い時間は保護者の送迎',
-    rule: '遅い時間帯（小学生の場合は18時以降）に参加される際は、保護者が責任を持って送り迎えいただきますようお願いします。',
-    explanation: '安全な帰宅のため、時間帯に応じて送迎の準備をお願いします。',
-    visual: '帰り方まで決めてから参加。',
+    label: '保護者同伴のお願い',
+    rule: '小学1年生〜4年生は、保護者の方も一緒にご来場ください。',
     tone: 'amber',
     icon: <IconUsersGroup className="size-16" />,
   },
   {
     section: '保護者の方へ',
-    group: '送迎等',
-    number: 2,
-    title: '専用駐車場はありません',
-    rule: '専用の駐車場はありませんので、ご注意ください。',
-    explanation: '送迎時は周辺の交通や施設利用者の迷惑にならないようご注意ください。',
-    visual: '車で来る時は停める場所に注意。',
-    tone: 'slate',
-    icon: <IconParkingOff className="size-16" />,
+    label: '送り迎えについて',
+    rule: '遅い時間帯（小学生の場合は18時以降）に参加される際は、保護者の方が送り迎えいただきますようお願いします。※専用の駐車場はありませんのでご注意ください。',
+    tone: 'amber',
+    icon: <IconCar className="size-16" />,
   },
   {
     section: '保護者の方へ',
-    group: 'その他',
-    number: 1,
-    title: 'SNS連絡先の交換は禁止',
-    rule: 'トラブル防止のため、スタッフと利用者のSNS等連絡先の交換は禁止させていただきます。',
-    explanation: '安全な運営のため、個人間の連絡先交換は行いません。',
-    visual: '連絡はテクノバの場を通して。',
+    label: 'データの活用について',
+    rule: '参加状況の記録や、子どもたちが記入する「目標設定と振り返り」のデータは、匿名化した上で、より良い運営等のために役立てさせていただきます。ご理解とご協力のほどよろしくお願いいたします。',
+    tone: 'slate',
+    icon: <IconChartBar className="size-16" />,
+  },
+  {
+    section: '保護者の方へ',
+    label: 'SNSのルール',
+    rule: 'トラブル防止のため、メンターと利用者のSNS等連絡先の交換は禁止させていただきます。また、許可なく他の人の姿や作品などをSNSに投稿しないようご配慮ください。',
     tone: 'rose',
     icon: <IconMessageCircleX className="size-16" />,
-  },
-  {
-    section: '保護者の方へ',
-    group: 'その他',
-    number: 2,
-    title: 'アンケートへのご協力',
-    rule: '保護者向けアンケートの実施を検討していますので、ご協力をお願いします。',
-    explanation: '活動をよりよくするために、保護者の方の意見を参考にします。',
-    visual: '声を集めて、次の改善へ。',
-    tone: 'emerald',
-    icon: <IconClipboardCheck className="size-16" />,
   },
 ];
 
@@ -380,16 +240,12 @@ function ParticipantStatusChip({ item }: { item: PreRegisteredParticipant }) {
 
 function LoadingScreen() {
   return (
-    <PageShell>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
-        <Card className="border-sky-200 shadow-sm">
-          <CardContent className="flex flex-col gap-4 p-6">
-            <Skeleton className="h-14 w-72" />
-            <Skeleton className="h-4 w-full" />
-            <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-              <Skeleton className="h-80 rounded-lg" />
-              <Skeleton className="h-80 rounded-lg" />
-            </div>
+    <PageShell className="p-3 sm:p-4">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4">
+        <Card className="flex flex-1 border-sky-200 py-4 shadow-sm">
+          <CardContent className="grid flex-1 grid-rows-1 gap-5 p-6 md:grid-cols-[320px_minmax(0,1fr)] md:gap-8">
+            <Skeleton className="h-full min-h-56 w-full rounded-3xl" />
+            <Skeleton className="h-full min-h-56 w-full rounded-3xl" />
           </CardContent>
         </Card>
       </div>
@@ -443,9 +299,8 @@ function GuidelineSlideView({
   onSubmit: () => void;
 }) {
   const tone = guidelineToneClasses[slide.tone];
-  const progress = `${(current / total) * 100}%`;
   const prefersReduced = useReducedMotion();
-  const offset = 40;
+  const offset = 48;
 
   // 矢印キーでスライドを前後に移動できるようにする（iPad の外付けキーボード運用を想定）。
   useEffect(() => {
@@ -459,7 +314,7 @@ function GuidelineSlideView({
 
   return (
     <PageShell className="p-3 sm:p-4">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4">
         <Card className="flex flex-1 border-sky-200 py-4 shadow-sm">
           <PanelHeader
             icon={<IconBook className="size-8" />}
@@ -467,38 +322,45 @@ function GuidelineSlideView({
             tone="sky"
             trailing={<ParticipantStatusChip item={item} />}
           />
-          <CardContent className="flex flex-1 flex-col justify-start gap-4 pt-2 sm:pt-3">
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="secondary"
-                  style={{ height: 'auto' }}
-                  className={cn('px-3 py-1.5 text-sm', tone.badge)}
-                >
+          <CardContent className="flex flex-1 flex-col gap-5 pt-2 sm:pt-3">
+            {/* 進捗: セクションの切れ目で間隔を空けたピップ。文字を増やさず全体の位置を伝える。 */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className={cn('rounded-full px-3.5 py-1.5 text-sm font-bold', tone.chip)}>
                   {slide.section}
-                </Badge>
-                <Badge
-                  variant="secondary"
-                  style={{ height: 'auto' }}
-                  className="px-3 py-1.5 text-sm"
-                >
-                  {slide.group} {slide.number}
-                </Badge>
-                <span className="ml-auto text-sm font-semibold text-muted-foreground tabular-nums">
+                </span>
+                <span className="text-sm font-semibold text-muted-foreground tabular-nums">
                   {current} / {total}
                 </span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200">
-                <motion.div
-                  className={cn('h-full rounded-full', tone.progress)}
-                  initial={false}
-                  animate={{ width: progress }}
-                  transition={prefersReduced ? { duration: 0 } : { duration: 0.4, ease: 'easeOut' }}
-                />
+              <div className="flex items-center">
+                {GUIDELINE_SLIDES.map((s, i) => {
+                  const newSection = i > 0 && s.section !== GUIDELINE_SLIDES[i - 1].section;
+                  const isActive = i === current - 1;
+                  const isDone = i < current - 1;
+                  return (
+                    <span
+                      key={`${s.section}-${s.label}`}
+                      aria-hidden="true"
+                      className={cn(
+                        'h-2 rounded-full transition-all duration-300',
+                        i === 0 ? '' : 'ml-1.5',
+                        newSection && 'ml-4',
+                        isActive
+                          ? cn('w-8', tone.bar)
+                          : isDone
+                            ? 'w-2 bg-slate-400'
+                            : 'w-2 bg-slate-200',
+                      )}
+                    />
+                  );
+                })}
               </div>
             </div>
 
-            <div className="relative min-h-[300px]">
+            {/* ヒーロー: 左「アイコン＋タイトル」カード / 右「本文」カードを枠内いっぱいに伸ばす。
+                カードはテキストと同じ section の slide+fade で一緒に登場する（個別 pop はしない）。 */}
+            <div className="relative flex flex-1 overflow-hidden">
               <AnimatePresence mode="wait" custom={direction}>
                 <motion.section
                   key={current}
@@ -506,42 +368,32 @@ function GuidelineSlideView({
                   initial={prefersReduced ? false : { opacity: 0, x: direction * offset }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={prefersReduced ? { opacity: 0 } : { opacity: 0, x: direction * -offset }}
-                  transition={
-                    prefersReduced ? { duration: 0 } : { duration: 0.28, ease: 'easeOut' }
-                  }
-                  className="grid min-h-[300px] items-stretch gap-3 lg:grid-cols-[260px_minmax(0,1fr)]"
+                  transition={prefersReduced ? { duration: 0 } : { duration: 0.3, ease: 'easeOut' }}
+                  className="grid w-full grid-rows-1 gap-5 px-1 sm:px-2 md:grid-cols-[320px_minmax(0,1fr)] md:gap-8"
                 >
                   <div
                     className={cn(
-                      'flex flex-col items-center justify-center gap-4 rounded-lg border p-4 text-center',
-                      tone.panel,
+                      'flex h-full flex-col items-center justify-center gap-6 rounded-3xl border p-8 text-center shadow-sm',
+                      tone.card,
                     )}
                   >
-                    <motion.div
+                    <div
                       aria-hidden="true"
                       className={cn(
-                        'flex size-24 items-center justify-center rounded-full',
-                        tone.icon,
+                        'flex size-28 items-center justify-center rounded-full',
+                        tone.iconCircle,
                       )}
-                      initial={prefersReduced ? false : popInitial}
-                      animate={popAnimate}
-                      transition={popTransition(0)}
                     >
                       {slide.icon}
-                    </motion.div>
-                    <p className="text-2xl font-semibold leading-tight">{slide.visual}</p>
+                    </div>
+                    <span className={cn('text-xl font-bold tracking-wide', tone.kicker)}>
+                      {slide.label}
+                    </span>
                   </div>
 
-                  <div className="flex flex-col justify-center rounded-lg border bg-white p-4 sm:p-5">
-                    <p className="text-base font-semibold text-muted-foreground">{slide.group}</p>
-                    <h1 className="mt-2 break-words text-3xl font-bold leading-tight sm:text-4xl">
-                      {slide.title}
-                    </h1>
-                    <p className="mt-4 rounded-lg border bg-slate-50 p-4 text-xl font-semibold leading-relaxed">
+                  <div className="flex h-full items-center justify-center rounded-3xl border border-slate-200 bg-slate-50 p-8 text-center shadow-sm md:p-10">
+                    <p className="text-balance text-2xl font-bold leading-relaxed text-slate-900 sm:text-3xl sm:leading-relaxed">
                       {slide.rule}
-                    </p>
-                    <p className="mt-3 text-lg font-medium leading-relaxed text-foreground">
-                      {slide.explanation}
                     </p>
                   </div>
                 </motion.section>
