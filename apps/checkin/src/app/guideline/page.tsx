@@ -67,7 +67,13 @@ type GuidelineSlide = {
 // chip=セクション札 / card=左カードの淡背景＋枠 / iconCircle=カード内アイコン円 / kicker=タイトル色 / bar=進捗
 const guidelineToneClasses: Record<
   GuidelineTone,
-  { chip: string; card: string; iconCircle: string; kicker: string; bar: string }
+  {
+    chip: string;
+    card: string;
+    iconCircle: string;
+    kicker: string;
+    bar: string;
+  }
 > = {
   emerald: {
     chip: 'bg-emerald-100 text-emerald-700',
@@ -159,7 +165,7 @@ const GUIDELINE_SLIDES: GuidelineSlide[] = [
   {
     section: 'テクノバでのすごしかた',
     label: '体調管理',
-    rule: '熱中症対策のために、飲み物を持参しましょう。1時間に1回は休憩しましょう。',
+    rule: '体調管理のために、飲み物を持参しましょう。1時間に1回は休憩しましょう。',
     tone: 'sky',
     icon: <IconBottle className="size-16" />,
   },
@@ -555,12 +561,22 @@ function GuidelinePageContent() {
         tone="emerald"
         icon={<IconCircleCheck className="size-8" />}
         rows={[
-          { label: 'ID', value: mutation.data.participantId, valueClassName: 'tabular-nums' },
+          {
+            label: 'ID',
+            value: mutation.data.participantId,
+            valueClassName: 'tabular-nums',
+          },
           { label: '氏名', value: mutation.data.fullName },
           { label: 'ニックネーム', value: mutation.data.nickname },
           { label: '学年', value: mutation.data.grade },
-          { label: '初回チェックイン', value: formatJapaneseDateTime(mutation.data.checkedInAt) },
-          { label: '事前登録日', value: formatJapaneseDate(mutation.registeredAt) },
+          {
+            label: '初回チェックイン',
+            value: formatJapaneseDateTime(mutation.data.checkedInAt),
+          },
+          {
+            label: '事前登録日',
+            value: formatJapaneseDate(mutation.registeredAt),
+          },
         ]}
         note="表示されたIDでカードを作ってください"
         footer={
