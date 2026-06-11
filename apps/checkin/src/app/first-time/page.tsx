@@ -220,7 +220,7 @@ export default function FirstTimePage() {
                   <IconAlertCircle className="size-5" aria-hidden="true" />
                   <AlertTitle>今、登録できる人はいません</AlertTitle>
                   <AlertDescription>
-                    名前が見つからないときはスタッフに声をかけてください。
+                    名前が見つからないときはメンターに声をかけてください。
                   </AlertDescription>
                 </Alert>
               ) : (
