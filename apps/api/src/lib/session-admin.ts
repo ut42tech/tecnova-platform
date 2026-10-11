@@ -1,6 +1,10 @@
 import type * as schema from '@tecnova/db';
 import { events, participants, sessions } from '@tecnova/db';
-import type { CreateSessionRequest, SessionMutationResponse } from '@tecnova/shared/schemas';
+import type {
+  CreateSessionRequest,
+  SessionMutationResponse,
+  UpdateSessionRequest,
+} from '@tecnova/shared/schemas';
 import {
   findOverlappingSession,
   SESSION_RULE_MESSAGES,
@@ -83,6 +87,25 @@ const eventIdOf = (date: string): SQL<string> =>
 const parseCheckedOutAt = (value: string | null): Date | null =>
   value === null ? null : new Date(value);
 
+// 記録が 1 件も無くなった過去の開催日を消す（日付の選択肢・サイネージの「前回の開催」に空の日を残さない）。
+// 今日の開催日は受付中のチェックインと競合させないため消さない。
+const deleteEventIfEmptyPast = (db: Db, eventId: string, today: string) =>
+  db
+    .delete(events)
+    .where(
+      and(
+        eq(events.id, eventId),
+        ne(events.date, today),
+        sql`not exists (select 1 from ${sessions} where ${sessions.eventId} = ${eventId})`,
+      ),
+    );
+
+// PATCH の checkedOutAt は「省略 = 変えない」「null = 滞在中に戻す」を区別する。
+const resolveCheckedOutAt = (
+  patch: UpdateSessionRequest['checkedOutAt'],
+  current: Date | null,
+): Date | null => (patch === undefined ? current : parseCheckedOutAt(patch));
+
 // 一覧（GET /api/sessions）と同じ形で返す。ターム・30分ルールは venue-schedule に集約。
 const toResponse = async (db: Db, sessionId: string): Promise<SessionMutationResponse> => {
   const [row] = await db
@@ -147,4 +170,50 @@ export const createSessionByAdmin = async (
     }),
   ]);
   return toResponse(db, id);
+};
+
+export const updateSessionByAdmin = async (
+  db: Db,
+  sessionId: string,
+  patch: UpdateSessionRequest,
+  now: Date,
+): Promise<SessionMutationResponse> => {
+  const [current] = await db
+    .select({
+      participantId: sessions.participantId,
+      eventId: sessions.eventId,
+      checkedInAt: sessions.checkedInAt,
+      checkedOutAt: sessions.checkedOutAt,
+    })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+  if (!current) throw sessionNotFound();
+
+  const participantId = patch.participantId ?? current.participantId;
+  if (participantId !== current.participantId) await requireParticipant(db, participantId);
+
+  const times: SessionTimes = {
+    checkedInAt:
+      patch.checkedInAt === undefined ? current.checkedInAt : new Date(patch.checkedInAt),
+    checkedOutAt: resolveCheckedOutAt(patch.checkedOutAt, current.checkedOutAt),
+  };
+  const date = toJstDateString(times.checkedInAt);
+  assertSessionRules(times, await findSiblingSessions(db, participantId, date, sessionId), now);
+
+  await db.batch([
+    ensureEvent(db, date),
+    db
+      .update(sessions)
+      .set({
+        participantId,
+        eventId: eventIdOf(date),
+        checkedInAt: times.checkedInAt,
+        checkedOutAt: times.checkedOutAt,
+      })
+      .where(eq(sessions.id, sessionId)),
+    // 日付が変わって元の開催日が空になった場合だけ消える（同じ日なら NOT EXISTS で何もしない）。
+    deleteEventIfEmptyPast(db, current.eventId, toJstDateString(now)),
+  ]);
+  return toResponse(db, sessionId);
 };
