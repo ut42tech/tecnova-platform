@@ -1,6 +1,6 @@
 'use client';
 
-import type { SessionMutationResponse } from '@tecnova/shared/schemas';
+import { SESSION_EARLIEST_DATE, type SessionMutationResponse } from '@tecnova/shared/schemas';
 import { SESSION_RULE_MESSAGES, validateSessionTimes } from '@tecnova/shared/session-rules';
 import {
   jstDateTimeToInstant,
@@ -117,8 +117,30 @@ function SessionForm({
   const isToday = date === today;
   // 「まだ滞在中」は今日の記録だけ（過去日はルール上許されない）。
   const open = isToday && stillPresent;
-  const checkedInAt = date && inTime ? jstDateTimeToInstant(date, inTime) : null;
-  const checkedOutAt = !open && date && outTime ? jstDateTimeToInstant(date, outTime) : null;
+  // 編集で日付・時刻を触っていなければ元の値（秒を含む）をそのまま使う。分単位で組み直すと、
+  // 触っていない項目の秒が落ちて、ありもしない重なり・前後関係のエラーで保存できなくなるため。
+  const original = request.mode === 'edit' ? request.record : null;
+  const inUntouched = original !== null && date === initial.date && inTime === initial.inTime;
+  const outUntouched =
+    original !== null &&
+    date === initial.date &&
+    outTime === initial.outTime &&
+    stillPresent === initial.stillPresent;
+  const checkedInAt = inUntouched
+    ? new Date(original.checkedInAt)
+    : date && inTime
+      ? jstDateTimeToInstant(date, inTime)
+      : null;
+  const checkedOutAt = open
+    ? null
+    : outUntouched && original.checkedOutAt !== null
+      ? new Date(original.checkedOutAt)
+      : date && outTime
+        ? jstDateTimeToInstant(date, outTime)
+        : null;
+  const participantChanged = original !== null && participant?.id !== original.participant.id;
+  // 編集で何も変えていなければ保存する意味が無い。
+  const nothingChanged = original !== null && inUntouched && outUntouched && !participantChanged;
   // 未入力は保存ボタンを押せなくするだけにし、ルール違反だけを文言で知らせる。
   const incomplete =
     participant === null || checkedInAt === null || (!open && checkedOutAt === null);
@@ -128,12 +150,19 @@ function SessionForm({
       : null;
 
   const save = async () => {
-    if (busy || incomplete || violation !== null || participant === null || checkedInAt === null) {
+    if (
+      busy ||
+      incomplete ||
+      nothingChanged ||
+      violation !== null ||
+      participant === null ||
+      checkedInAt === null
+    ) {
       return;
     }
     setBusy(true);
     setServerError(null);
-    const body = {
+    const full = {
       participantId: participant.id,
       checkedInAt: checkedInAt.toISOString(),
       checkedOutAt: checkedOutAt ? checkedOutAt.toISOString() : null,
@@ -143,9 +172,17 @@ function SessionForm({
         request.mode === 'edit'
           ? await apiJson<SessionMutationResponse>(
               `/api/sessions/${encodeURIComponent(request.record.sessionId)}`,
-              { method: 'PATCH', body },
+              {
+                method: 'PATCH',
+                // 変えた項目だけを送る（API は部分更新に対応している）。
+                body: {
+                  ...(participantChanged ? { participantId: full.participantId } : {}),
+                  ...(inUntouched ? {} : { checkedInAt: full.checkedInAt }),
+                  ...(outUntouched ? {} : { checkedOutAt: full.checkedOutAt }),
+                },
+              },
             )
-          : await apiJson<SessionMutationResponse>('/api/sessions', { method: 'POST', body });
+          : await apiJson<SessionMutationResponse>('/api/sessions', { method: 'POST', body: full });
       toastSuccess(request.mode === 'edit' ? '来場記録を更新しました' : '来場記録を追加しました');
       onSaved(result);
       onClose();
@@ -174,6 +211,7 @@ function SessionForm({
             id="session-date"
             type="date"
             value={date}
+            min={SESSION_EARLIEST_DATE}
             max={today}
             onChange={(e) => setDate(e.target.value)}
             disabled={busy}
@@ -236,7 +274,7 @@ function SessionForm({
             キャンセル
           </Button>
         </DialogClose>
-        <Button type="submit" disabled={busy || incomplete || violation !== null}>
+        <Button type="submit" disabled={busy || incomplete || nothingChanged || violation !== null}>
           {busy ? '保存中...' : '保存'}
         </Button>
       </DialogFooter>
