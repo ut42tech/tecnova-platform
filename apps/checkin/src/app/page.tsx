@@ -8,6 +8,7 @@ import {
   IconClipboardCheck,
   IconKeyboard,
   IconQrcode,
+  IconRefresh,
   IconUserPlus,
 } from '@tabler/icons-react';
 import { Button } from '@tecnova/ui/components/button';
@@ -71,6 +72,7 @@ export default function Home() {
   const prefersReduced = useReducedMotion();
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [scanAttempt, setScanAttempt] = useState(0);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
   const [navigatingId, setNavigatingId] = useState<string | null>(null);
@@ -92,6 +94,7 @@ export default function Home() {
   // iPad の Safari で起動しっぱなしにすると、映像は動いているのに QR を読まなくなる事象があり、
   // 「カメラを再起動すれば読める」という現場の実績に合わせて、毎回起動し直した状態で読み取る。
   // プロフィールへ遷移中もスキャナを止めて、同じQRの連続検出を避ける。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scanAttempt is an explicit restart token for reinitializing the camera.
   useEffect(() => {
     if (!scanning || navigatingId) return;
     const video = videoRef.current;
@@ -143,7 +146,7 @@ export default function Home() {
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
-  }, [navigatingId, refreshVideoDevices, router, scanning, selectedDeviceId]);
+  }, [navigatingId, refreshVideoDevices, router, scanAttempt, scanning, selectedDeviceId]);
 
   // ナビゲーション遅延タイマーはアンマウント時のみ掃除する。
   // スキャナ effect の cleanup（navigatingId 変更で毎回走る）で消すと遷移がキャンセルされるため分離する。
@@ -154,6 +157,13 @@ export default function Home() {
       }
     };
   }, []);
+
+  // 読み取り中でもカメラを起動し直し、タイムアウトもリセットする。現場では「すぐ読ませたいときに押す」
+  // 使い方をしているので残している。待機中に押した場合はそのまま読み取りを始める。
+  const restartCamera = () => {
+    setScanAttempt((attempt) => attempt + 1);
+    setScanning(true);
+  };
 
   const switchCamera = async () => {
     const devices = videoDevices.length > 0 ? videoDevices : await refreshVideoDevices();
@@ -232,17 +242,30 @@ export default function Home() {
                     </button>
                   )}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  className="h-12 w-full text-base"
-                  disabled={navigatingId !== null}
-                  onClick={() => void switchCamera()}
-                >
-                  <IconCameraRotate className="size-5" data-icon="inline-start" />
-                  カメラ切り替え
-                </Button>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="h-12 text-base"
+                    disabled={navigatingId !== null}
+                    onClick={restartCamera}
+                  >
+                    <IconRefresh className="size-5" data-icon="inline-start" />
+                    カメラを再起動
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="h-12 text-base"
+                    disabled={navigatingId !== null}
+                    onClick={() => void switchCamera()}
+                  >
+                    <IconCameraRotate className="size-5" data-icon="inline-start" />
+                    カメラ切り替え
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </Reveal>
