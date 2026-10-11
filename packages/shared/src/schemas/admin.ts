@@ -215,6 +215,37 @@ export const createPreRegistrationRequestSchema = z.object({
   registeredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required'),
 });
 
+// `/api/sessions`（POST / PATCH・admin role 専用）— 来場記録の修正
+// 時刻は ISO 8601（UTC・末尾 Z）。画面は JST で入力し、shared の jstDateTimeToInstant で変換して送る。
+const sessionParticipantIdSchema = z.string().regex(/^\d{5}$/, '5-digit participant id required');
+const sessionInstantSchema = z.iso.datetime();
+
+export const createSessionRequestSchema = z.object({
+  participantId: sessionParticipantIdSchema,
+  checkedInAt: sessionInstantSchema,
+  // null = 滞在中（今日の記録だけ許す。判定は session-rules）
+  checkedOutAt: sessionInstantSchema.nullable(),
+});
+
+// 変える項目だけを送る。checkedOutAt は「省略 = 変えない」「null = 滞在中に戻す」を区別する。
+export const updateSessionRequestSchema = z
+  .object({
+    participantId: sessionParticipantIdSchema.optional(),
+    checkedInAt: sessionInstantSchema.optional(),
+    checkedOutAt: sessionInstantSchema.nullable().optional(),
+  })
+  .refine(
+    (v) =>
+      v.participantId !== undefined || v.checkedInAt !== undefined || v.checkedOutAt !== undefined,
+    { message: 'at least one of participantId, checkedInAt, checkedOutAt is required' },
+  );
+
+// eventDate は記録が属する開催日。画面が表示中の日付を切り替えるために返す。
+export const sessionMutationResponseSchema = z.object({
+  eventDate: z.string(), // 'YYYY-MM-DD' (JST)
+  session: todaySessionItemSchema,
+});
+
 export type TodaySessionItem = z.infer<typeof todaySessionItemSchema>;
 export type TodaySessionsResponse = z.infer<typeof todaySessionsResponseSchema>;
 export type SessionsByDateQuery = z.infer<typeof sessionsByDateQuerySchema>;
@@ -233,3 +264,6 @@ export type PreRegistrationItem = z.infer<typeof preRegistrationItemSchema>;
 export type ActivatedPreRegistrationItem = z.infer<typeof activatedPreRegistrationItemSchema>;
 export type PreRegistrationsListResponse = z.infer<typeof preRegistrationsListResponseSchema>;
 export type CreatePreRegistrationRequest = z.infer<typeof createPreRegistrationRequestSchema>;
+export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
+export type UpdateSessionRequest = z.infer<typeof updateSessionRequestSchema>;
+export type SessionMutationResponse = z.infer<typeof sessionMutationResponseSchema>;
