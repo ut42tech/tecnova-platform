@@ -52,6 +52,7 @@
 | admin データ層モダン化（`useApiResource` 共通化 + 即時インタラクティブシェル） | #41, #42, #43 |
 | checkin データ層を `useApiResource` に移行（background reload） | #44 |
 | checkin 参加ガイドラインの文言・レイアウト刷新、受付文言を「メンター」に統一 | #46, `5f5c131` |
+| 来場記録の修正（admin のみ。ダッシュボード・利用者詳細から追加・編集・削除）+ API の自動テスト基盤 | `feat/admin-session-correction` の PR（Issue #48 / #49） |
 
 本番への反映は `develop` → `main` のリリース PR（#36 / #38 / #45 ほか）で行っている。
 
@@ -156,18 +157,7 @@
 
 ### 直近の優先事項（2026-10 時点）
 
-**1. チェックイン記録の修正機能（Issue #48 / #49）**
-
-- 背景：現場でチェックイン忘れ・押し間違いといった操作ミスが頻発しており、システム上で訂正する
-  手段が無い
-- 内容：管理画面から来場記録（sessions）を**追加・編集・削除**できるようにする（admin のみ）。
-  チェックイン忘れの救済には「後から記録を追加」も要る
-- 前提知識：sessions の作成・更新・削除 API は管理系に未実装（現状は `GET /api/sessions` のみ）。
-  `mentorsRoute` の `requireAdmin` サブルートの型を流用できる。参加回数統計は参照時に sessions から
-  計算するので、修正は集計に即反映される。過去日に記録を追加する場合は、その日の `events` 行の
-  get-or-create が要る
-
-**2. QR 読み取り精度の改善（バグ）**
+**1. QR 読み取り精度の改善（バグ）**
 
 - 現場のフィードバック：受付端末（checkin `/`）の QR スキャナが、iPad を常駐させてページを開いた
   まましばらく置くと、映像は動いているのに QR を読まなくなる。カメラの再起動ボタンを押すと読める
@@ -364,4 +354,5 @@ YOUTUBE_PLAYLIST_ID=<playlist id>
   - subagents：`workers-constraint-reviewer`（Workers 制約チェック）、
     `privacy-reviewer`（個人情報の保持範囲チェック）
   - skills：`create-migration`（Drizzle/D1 マイグレーション）、`pre-pr-check`
-    （Biome + type-check + CI 対象外の `packages/shared` テスト + シークレット/PII スキャン）
+    （Biome + type-check + CI 対象外の `packages/shared` / `apps/api` テスト + シークレット/PII スキャン）
+- **API のテスト**：`pnpm --filter @tecnova/api test`（`@cloudflare/vitest-plugin`。ローカルの D1 にマイグレーションを当てて `apps/api/src/lib` を直接テストする。各テストの前に `resetTables` で空にする）。`packages/shared` は `pnpm --filter @tecnova/shared test`。どちらも CI では走らないので PR 前に手元で実行する
