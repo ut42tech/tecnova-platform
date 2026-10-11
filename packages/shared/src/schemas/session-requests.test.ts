@@ -38,7 +38,9 @@ describe('来場時刻の下限', () => {
       checkedOutAt: null,
     });
     expect(r.success).toBe(false);
-    expect(updateSessionRequestSchema.safeParse({ checkedOutAt: '0999-10-11T01:05:00.000Z' }).success).toBe(false);
+    expect(
+      updateSessionRequestSchema.safeParse({ checkedOutAt: '0999-10-11T01:05:00.000Z' }).success,
+    ).toBe(false);
   });
 });
 
