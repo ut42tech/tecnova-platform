@@ -47,20 +47,23 @@ export const validateSessionTimes = (
   return null;
 };
 
-// 区間 [入場, 退場) の終端。滞在中は「今」まで続いているとみなす。
-const intervalEnd = (times: SessionTimes, now: Date): number =>
-  Math.max(times.checkedInAt.getTime(), (times.checkedOutAt ?? now).getTime());
+// 区間 [入場, 退場) の終端。滞在中はまだ終わっていないので終端なし（無限）とみなす。
+// 「今」で打ち切ると、猶予内で少し未来の入場の滞在中が [t, t) の空区間になり、
+// 既存の滞在中と重ならない扱いになって同じ子の滞在中が 2 件できてしまう。
+const intervalEnd = (times: SessionTimes): number =>
+  times.checkedOutAt === null ? Number.POSITIVE_INFINITY : times.checkedOutAt.getTime();
 
 // 同じ子・同じ日の他の記録（siblings）のうち、target と時間が重なるものを 1 件返す。
 // 境界で接する（11:00 退場・11:00 入場）のは重ならない扱い。
+// _now は呼び出し側との互換のため受け取るが、滞在中は無限区間として扱うので判定には使わない。
 export const findOverlappingSession = <T extends SessionTimes>(
   target: SessionTimes,
   siblings: readonly T[],
-  now: Date,
+  _now: Date,
 ): T | null => {
   const start = target.checkedInAt.getTime();
-  const end = intervalEnd(target, now);
-  return siblings.find((s) => start < intervalEnd(s, now) && s.checkedInAt.getTime() < end) ?? null;
+  const end = intervalEnd(target);
+  return siblings.find((s) => start < intervalEnd(s) && s.checkedInAt.getTime() < end) ?? null;
 };
 
 // 画面と API のエラー文言をそろえるため、違反ごとの日本語をここに集約する。

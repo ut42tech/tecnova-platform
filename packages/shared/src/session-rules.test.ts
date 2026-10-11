@@ -86,6 +86,12 @@ describe('findOverlappingSession', () => {
     expect(findOverlappingSession(times(TODAY, '14:00', null), [sibling], NOW)).toBe(sibling);
   });
 
+  it('猶予内で少し未来の滞在中でも、既存の滞在中と重なる（滞在中が 2 件になるのを防ぐ）', () => {
+    const now = new Date(jst(TODAY, '10:30').getTime() + 30_000);
+    const sibling = times(TODAY, '09:00', null);
+    expect(findOverlappingSession(times(TODAY, '10:31', null), [sibling], now)).toBe(sibling);
+  });
+
   it('滞在中の記録より前に終わった記録とは重ならない', () => {
     const sibling = times(TODAY, '10:00', '11:00');
     expect(findOverlappingSession(times(TODAY, '14:00', null), [sibling], NOW)).toBeNull();
