@@ -1,9 +1,11 @@
 import {
   createMentorRequestSchema,
+  createSessionRequestSchema,
   participantsListQuerySchema,
   participationSummaryQuerySchema,
   sessionsByDateQuerySchema,
   updateMentorRequestSchema,
+  updateSessionRequestSchema,
 } from '@tecnova/shared/schemas';
 import { Hono } from 'hono';
 import {
@@ -17,6 +19,11 @@ import {
   updateMentor,
 } from '../lib/admin';
 import { invalidBodyError, invalidQueryError } from '../lib/errors';
+import {
+  createSessionByAdmin,
+  deleteSessionByAdmin,
+  updateSessionByAdmin,
+} from '../lib/session-admin';
 import { createDb, requireAdmin } from '../middleware/auth';
 import type { AppEnv } from '../types';
 
@@ -44,6 +51,33 @@ adminRoute.get('/sessions', async (c) => {
     return c.json(invalidQueryError, 400);
   }
   return c.json(await fetchSessionsForEvent(createDb(c.env), parsed.data.date ?? null));
+});
+
+// 来場記録の修正（admin 専用）。受付の操作ミス（チェックイン忘れ・別の子で受付など）を訂正する。
+// GET /sessions は全メンター向けのまま残すため、/sessions にサブルーターを mount せず、
+// 書き込みのルートにだけ requireAdmin を当てる。
+adminRoute.post('/sessions', requireAdmin, async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = createSessionRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(invalidBodyError, 400);
+  }
+  return c.json(await createSessionByAdmin(createDb(c.env), parsed.data, new Date()), 201);
+});
+
+adminRoute.patch('/sessions/:sessionId', requireAdmin, async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = updateSessionRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(invalidBodyError, 400);
+  }
+  const sessionId = c.req.param('sessionId');
+  return c.json(await updateSessionByAdmin(createDb(c.env), sessionId, parsed.data, new Date()));
+});
+
+adminRoute.delete('/sessions/:sessionId', requireAdmin, async (c) => {
+  await deleteSessionByAdmin(createDb(c.env), c.req.param('sessionId'), new Date());
+  return c.body(null, 204);
 });
 
 // 過去開催日のセレクタ用（最新 50 件）。
