@@ -24,6 +24,9 @@ import { Reveal } from '@/components/reveal';
 import { ScanReticle } from '@/components/scan-reticle';
 import { PARTICIPANT_ID_PATTERN, participantProfilePath } from '@/lib/participant-id';
 
+// 読み取りを始めてから、QR が読めないままカメラを止めて待機に戻るまでの時間。
+const SCAN_TIMEOUT_MS = 20_000;
+
 function ActionPanel({
   index,
   title,
@@ -68,7 +71,8 @@ export default function Home() {
   const router = useRouter();
   const prefersReduced = useReducedMotion();
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [scannerAttempt, setScannerAttempt] = useState(0);
+  const [scanning, setScanning] = useState(false);
+  const [scanAttempt, setScanAttempt] = useState(0);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
   const [navigatingId, setNavigatingId] = useState<string | null>(null);
@@ -86,10 +90,13 @@ export default function Home() {
     return devices;
   }, []);
 
-  // プロフィールへ遷移中はスキャナを止めて、同じQRの連続検出を避ける。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scannerAttempt is an explicit restart token for reinitializing the camera.
+  // カメラは「読み取る」を押したときだけ起動し、読めたら or タイムアウトで止める。
+  // iPad の Safari で起動しっぱなしにすると、映像は動いているのに QR を読まなくなる事象があり、
+  // 「カメラを再起動すれば読める」という現場の実績に合わせて、毎回起動し直した状態で読み取る。
+  // プロフィールへ遷移中もスキャナを止めて、同じQRの連続検出を避ける。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scanAttempt is an explicit restart token for reinitializing the camera.
   useEffect(() => {
-    if (navigatingId) return;
+    if (!scanning || navigatingId) return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -98,6 +105,7 @@ export default function Home() {
     setCameraError(null);
     void refreshVideoDevices();
 
+    const timeoutTimer = window.setTimeout(() => setScanning(false), SCAN_TIMEOUT_MS);
     const startTimer = window.setTimeout(() => {
       reader
         .decodeFromVideoDevice(selectedDeviceId, video, (result) => {
@@ -127,16 +135,18 @@ export default function Home() {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes('play() request was interrupted')) return;
           setCameraError(msg);
+          setScanning(false);
         });
     }, 0);
 
     return () => {
       cancelled = true;
       window.clearTimeout(startTimer);
+      window.clearTimeout(timeoutTimer);
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
-  }, [navigatingId, refreshVideoDevices, router, scannerAttempt, selectedDeviceId]);
+  }, [navigatingId, refreshVideoDevices, router, scanAttempt, scanning, selectedDeviceId]);
 
   // ナビゲーション遅延タイマーはアンマウント時のみ掃除する。
   // スキャナ effect の cleanup（navigatingId 変更で毎回走る）で消すと遷移がキャンセルされるため分離する。
@@ -148,18 +158,24 @@ export default function Home() {
     };
   }, []);
 
+  // 読み取り中でもカメラを起動し直し、タイムアウトもリセットする。現場では「すぐ読ませたいときに押す」
+  // 使い方をしているので残している。待機中に押した場合はそのまま読み取りを始める。
+  const restartCamera = () => {
+    setScanAttempt((attempt) => attempt + 1);
+    setScanning(true);
+  };
+
   const switchCamera = async () => {
     const devices = videoDevices.length > 0 ? videoDevices : await refreshVideoDevices();
-    if (devices.length <= 1) {
-      setScannerAttempt((attempt) => attempt + 1);
-      return;
+    if (devices.length > 1) {
+      const currentIndex = selectedDeviceId
+        ? devices.findIndex((device) => device.deviceId === selectedDeviceId)
+        : -1;
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % devices.length : 1;
+      setSelectedDeviceId(devices[nextIndex]?.deviceId);
     }
-
-    const currentIndex = selectedDeviceId
-      ? devices.findIndex((device) => device.deviceId === selectedDeviceId)
-      : -1;
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % devices.length : 1;
-    setSelectedDeviceId(devices[nextIndex]?.deviceId);
+    // 切り替えたカメラの映像をすぐ確認できるよう、待機中なら読み取りも始める。
+    setScanning(true);
   };
 
   return (
@@ -176,7 +192,7 @@ export default function Home() {
               <CardContent className="flex flex-1 flex-col gap-4">
                 <div className="relative min-h-72 w-full flex-1 overflow-hidden rounded-lg bg-slate-950 lg:h-[clamp(280px,calc(100svh-340px),560px)] lg:flex-none">
                   <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
-                  {!navigatingId && !cameraError && <ScanReticle />}
+                  {scanning && !navigatingId && <ScanReticle />}
                   {navigatingId && (
                     <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 p-6">
                       <ViewTransition name="participant-portal">
@@ -207,11 +223,23 @@ export default function Home() {
                       </ViewTransition>
                     </div>
                   )}
-                  {cameraError && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/85 p-6 text-center text-lg font-bold text-white">
-                      <IconCamera className="mr-3 size-8" aria-hidden="true" />
-                      カメラを起動できませんでした
-                    </div>
+                  {!scanning && !navigatingId && (
+                    <button
+                      type="button"
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-950/85 p-6 text-center text-white transition-colors hover:bg-slate-950/75 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-300"
+                      onClick={() => setScanning(true)}
+                    >
+                      <span className="flex size-24 items-center justify-center rounded-full bg-sky-500 shadow-lg">
+                        <IconQrcode className="size-14" aria-hidden="true" />
+                      </span>
+                      <span className="text-2xl font-black">タップしてQRを読み取る</span>
+                      {cameraError && (
+                        <span className="flex items-center gap-2 text-base font-bold text-rose-200">
+                          <IconCamera className="size-5" aria-hidden="true" />
+                          カメラを起動できませんでした。もう一度タップしてください
+                        </span>
+                      )}
+                    </button>
                   )}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -221,7 +249,7 @@ export default function Home() {
                     size="lg"
                     className="h-12 text-base"
                     disabled={navigatingId !== null}
-                    onClick={() => setScannerAttempt((attempt) => attempt + 1)}
+                    onClick={restartCamera}
                   >
                     <IconRefresh className="size-5" data-icon="inline-start" />
                     カメラを再起動
