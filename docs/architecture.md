@@ -124,24 +124,23 @@ flowchart LR
 architecture-beta
   group people(internet)[People And Devices]
   service child_kiosk(server)[Child And Reception iPad] in people
-  service mentor_phone(server)[Mentor Smartphone Future] in people
+  service child_device(server)[Child Record Input Device Future] in people
   service admin_pc(server)[Admin PC Browser] in people
   service signage_monitor(server)[Venue Large Monitor Current] in people
-  service researcher_pc(server)[Researcher Analysis PC Future] in people
+  service researcher_pc(server)[Researcher Analysis PC Current] in people
   service parent_browser(server)[Parent Browser Future] in people
 
   group frontend(cloud)[Vercel Frontend Apps]
   service checkin_app(server)[apps checkin Next PWA Current] in frontend
   service admin_app(server)[apps admin Next Web Current] in frontend
   service signage_app(server)[apps signage Next Display Current] in frontend
-  service mentor_app(server)[apps mentor Next PWA Future] in frontend
+  service child_input(server)[Child Record Input Future] in frontend
   service analytics_app(server)[Analytics Dashboard Future] in frontend
   service parent_app(server)[Parent View Future] in frontend
 
   group edge(cloud)[Cloudflare Edge Platform]
   service worker(server)[apps api Hono Workers Current] in edge
   service d1(database)[Cloudflare D1 SQLite Current] in edge
-  service r2(disk)[Cloudflare R2 Future] in edge
   service public_api(server)[Public API Future] in edge
   service api_keys(server)[API Key Auth Future] in edge
 
@@ -153,11 +152,12 @@ architecture-beta
 
   group google(internet)[Google Workspace Services]
   service student_sheet(disk)[Student Sheet Current] in google
-  service teacher_sheet(disk)[Teacher Sheet Future Sync] in google
+  service teacher_sheet(disk)[Teacher Sheet Teacher Led] in google
   service sheets_api(server)[Google Sheets API Current] in google
   service gas_drive(server)[GAS Drive Webhook Current] in google
   service drive_folder(disk)[Participant Drive Folders Current] in google
   service form_feed(server)[Google Form Feed External] in google
+  service sql_dump(disk)[Daily D1 SQL Dump On Drive Current] in google
 
   group core(server)[Current Backend Domain]
   service participants(database)[Participants Current] in core
@@ -167,13 +167,10 @@ architecture-beta
   service auth_tables(database)[Better Auth Tables Current] in core
 
   group planned(server)[Planned Domain Model]
-  service activity_logs(database)[Activity Logs Future] in planned
-  service activity_categories(database)[Activity Categories Future] in planned
-  service equipment(database)[Equipment Master Future] in planned
-  service collaborators(database)[Collaborators Future] in planned
-  service reflection_ocr(server)[Vision LLM OCR Future] in planned
-  service csv_export(disk)[CSV Export Future] in planned
-  service offline_sync(server)[Offline Sync Future] in planned
+  service child_records(database)[Child Reflection And Goal Records Future] in planned
+  service activity_categories(database)[Activity Categories On Hold] in planned
+  service equipment(database)[Equipment Master On Hold] in planned
+  service collaborators(database)[Collaborators On Hold] in planned
   service crowd_status(server)[Crowd Status Future] in planned
 
   group packages(disk)[Monorepo Shared Packages]
@@ -192,28 +189,26 @@ architecture-beta
   service vercel_deploy(server)[Vercel Deploy Current] in delivery
   service secrets(disk)[Wrangler And Vercel Secrets Current] in delivery
   service ops_manual(disk)[Runbook And Rehearsal Current] in delivery
-  service legacy_import(disk)[Prior Year D1 Import Future] in delivery
 
   child_kiosk:R --> L:checkin_app
-  mentor_phone:R --> L:mentor_app
+  child_device:R --> L:child_input
   admin_pc:R --> L:admin_app
   signage_monitor:R --> L:signage_app
   researcher_pc:R --> L:analytics_app
+  researcher_pc:B --> T:sql_dump
   parent_browser:R --> L:parent_app
 
   checkin_app:R --> L:worker
   admin_app:R --> L:worker
   signage_app:R --> L:worker
-  mentor_app:R --> L:worker
+  child_input:R --> L:worker
   analytics_app:R --> L:worker
   parent_app:R --> L:public_api
 
   checkin_app:T --> B:ui_pkg
   admin_app:T --> B:ui_pkg
-  mentor_app:T --> B:ui_pkg
   checkin_app:B --> T:shared_pkg
   admin_app:B --> T:shared_pkg
-  mentor_app:B --> T:shared_pkg
 
   worker:L --> R:better_auth
   better_auth:R --> L:google_oauth
@@ -227,7 +222,7 @@ architecture-beta
   d1:B --> T:sessions
   d1:B --> T:mentors
   d1:B --> T:auth_tables
-  d1:R --> L:activity_logs
+  d1:R --> L:child_records
   d1:R --> L:activity_categories
   d1:R --> L:equipment
   d1:R --> L:collaborators
@@ -238,18 +233,13 @@ architecture-beta
   form_feed:R --> L:teacher_sheet
   worker:R --> L:gas_drive
   gas_drive:R --> L:drive_folder
+  d1:R --> L:sql_dump
 
   public_api:B --> T:api_keys
   public_api:L --> R:worker
   public_api:R --> L:crowd_status
-  worker:R --> L:r2
-  r2:R --> L:reflection_ocr
-  reflection_ocr:R --> L:activity_logs
-  activity_logs:B --> T:csv_export
-  activity_logs:R --> L:analytics_app
+  child_records:R --> L:analytics_app
   sessions:R --> L:crowd_status
-  offline_sync:L --> R:checkin_app
-  offline_sync:R --> L:worker
 
   db_pkg:R --> L:d1
   migrations:R --> L:d1
@@ -266,12 +256,10 @@ architecture-beta
   vercel_deploy:R --> L:checkin_app
   vercel_deploy:R --> L:admin_app
   vercel_deploy:R --> L:signage_app
-  vercel_deploy:R --> L:mentor_app
   secrets:T --> B:worker
   secrets:T --> B:checkin_app
   secrets:T --> B:admin_app
   ops_manual:R --> L:child_kiosk
-  legacy_import:R --> L:d1
 ```
 
 ## Legend
@@ -279,7 +267,15 @@ architecture-beta
 - `Current` means the component exists in the repository or is already described
   as deployed in the handoff notes.
 - `Future` means planned Phase 1.5 or Phase 2 scope from the requirements and
-  MVP documentation.
+  MVP documentation. `On Hold` items are kept only as candidates and will be
+  decided together with the child record input method.
+- The 2026-10 plan review (`requirements.md` §3.5) dropped the mentor app and
+  its 30-minute activity logs, CSV export, reflection-sheet OCR (and the R2
+  storage it needed), teacher-sheet auto sync, offline sync, and the prior-year
+  data import. Children now record their own reflection and goal-setting; the
+  input may end up as a Google Form instead of an in-house app.
+- Analysis runs as SQL over the daily D1 dump that an out-of-repo Google Apps
+  Script saves to Google Drive.
 - `/api/*` and `/checkin/*` both pass through Better Auth and the `mentors`
   allowlist. Planned `/public/v1/*` traffic is separated behind API key auth.
 - `apps signage` is a venue large-monitor display that runs under the same

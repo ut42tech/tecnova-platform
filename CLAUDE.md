@@ -47,7 +47,8 @@ tecnova-platform/
 └── docs/                # 設計ドキュメント
 ```
 
-`apps/mentor`（メンタースマホPWA）は Phase 1.5 でスコープ化されるが現時点では未実装。
+メンターアプリ（旧 `apps/mentor` 構想）は 2026-10 の計画見直しで取りやめた。子ども向けの記録入力（Phase 1.5）は
+方式検討中で、自前で作る場合は `apps/` 配下に追加する（`docs/requirements.md` §3.5）。
 Better Auth の設定は `packages/auth` ではなく `apps/api/src/lib/auth.ts` に集約している
 （リクエスト毎に instance を作る制約上、Workers の Env を直接受け取れる場所に置くのが自然なため）。
 
