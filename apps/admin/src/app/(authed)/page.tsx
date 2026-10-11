@@ -4,15 +4,22 @@ import {
   IconCalendarOff,
   IconLogin2,
   IconLogout2,
+  IconPlus,
   IconRefresh,
   IconUserCheck,
 } from '@tabler/icons-react';
-import type { EventsListResponse, TodaySessionsResponse } from '@tecnova/shared/schemas';
+import type {
+  EventsListResponse,
+  SessionMutationResponse,
+  TodaySessionItem,
+  TodaySessionsResponse,
+} from '@tecnova/shared/schemas';
 import { toJstDateString } from '@tecnova/shared/venue-schedule';
 import { Badge } from '@tecnova/ui/components/badge';
 import { Button } from '@tecnova/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@tecnova/ui/components/card';
 import { DataError } from '@tecnova/ui/components/data-error';
+import { useMe } from '@tecnova/ui/components/me-provider';
 import {
   Select,
   SelectContent,
@@ -32,12 +39,19 @@ import {
 import { TableSkeleton } from '@tecnova/ui/components/table-skeleton';
 import { TermBadge, UncountedBadge } from '@tecnova/ui/components/term-badge';
 import { type ResourceState, useApiResource } from '@tecnova/ui/hooks/use-api-resource';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { AnimatedNumber } from '@/components/animated-number';
 import { PageHeader } from '@/components/page-header';
 import { ParticipantDetailSheet } from '@/components/participant-detail-sheet';
 import { RecordCard, RecordField } from '@/components/record-card';
 import { Reveal } from '@/components/reveal';
+import { SessionDeleteDialog } from '@/components/session-delete-dialog';
+import {
+  SessionFormDialog,
+  type SessionFormRequest,
+  type SessionRecord,
+} from '@/components/session-form-dialog';
+import { SessionRowActions } from '@/components/session-row-actions';
 
 // セレクタで「今日」を選んでいる状態のセンチネル値。
 // 空文字や undefined を使うと Select の制御値として扱いにくいのでこの形に。
@@ -50,6 +64,14 @@ const fmtTime = (iso: string): string =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(iso));
+
+// 一覧の行から編集・削除の対象を組み立てる。
+const toRecord = (s: TodaySessionItem): SessionRecord => ({
+  sessionId: s.sessionId,
+  participant: { id: s.participantId, fullName: s.fullName, nickname: s.nickname, grade: s.grade },
+  checkedInAt: s.checkedInAt,
+  checkedOutAt: s.checkedOutAt,
+});
 
 export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState<string>(TODAY_VALUE);
@@ -70,6 +92,22 @@ export default function DashboardPage() {
   // 「本日」ラベル + イベントとして登録済みの過去日を結合する。
   // 今日の event が events に含まれていてもメニューの重複は避ける。
   const pastEvents = events.filter((e) => e.date !== today);
+
+  // 来場記録の修正は admin のみ（API も requireAdmin で守っている）。
+  const me = useMe();
+  const isAdmin = me.mentor.role === 'admin';
+  const [formRequest, setFormRequest] = useState<SessionFormRequest | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<SessionRecord | null>(null);
+
+  const refreshAll = () => {
+    sessions.reload({ background: true });
+    eventsResource.reload({ background: true });
+  };
+  const handleSaved = (result: SessionMutationResponse) => {
+    refreshAll();
+    // 記録が別の日付に属する場合（過去日の追加・日付の変更）は、その日付へ表示を切り替える。
+    setSelectedDate(result.eventDate === today ? TODAY_VALUE : result.eventDate);
+  };
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-4 md:p-8">
@@ -102,6 +140,22 @@ export default function DashboardPage() {
                 <IconRefresh data-icon="inline-start" />
                 更新
               </Button>
+              {isAdmin && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    setFormRequest({
+                      mode: 'create',
+                      date: selectedDate === TODAY_VALUE ? today : selectedDate,
+                      participant: null,
+                    })
+                  }
+                >
+                  <IconPlus data-icon="inline-start" />
+                  記録を追加
+                </Button>
+              )}
             </>
           }
         />
@@ -113,6 +167,17 @@ export default function DashboardPage() {
         <DashboardBody
           sessions={sessions.state}
           onSelectParticipant={(id) => setSelectedParticipantId(id)}
+          renderActions={
+            isAdmin
+              ? (s) => (
+                  <SessionRowActions
+                    label={s.nickname}
+                    onEdit={() => setFormRequest({ mode: 'edit', record: toRecord(s) })}
+                    onDelete={() => setDeleteRecord(toRecord(s))}
+                  />
+                )
+              : undefined
+          }
         />
       </Reveal>
 
@@ -121,6 +186,17 @@ export default function DashboardPage() {
         onOpenChange={(open) => {
           if (!open) setSelectedParticipantId(null);
         }}
+        onSessionsChanged={refreshAll}
+      />
+      <SessionFormDialog
+        request={formRequest}
+        onClose={() => setFormRequest(null)}
+        onSaved={handleSaved}
+      />
+      <SessionDeleteDialog
+        record={deleteRecord}
+        onClose={() => setDeleteRecord(null)}
+        onDeleted={refreshAll}
       />
     </main>
   );
@@ -129,9 +205,12 @@ export default function DashboardPage() {
 function DashboardBody({
   sessions,
   onSelectParticipant,
+  renderActions,
 }: {
   sessions: ResourceState<TodaySessionsResponse>;
   onSelectParticipant: (id: string) => void;
+  // admin のときだけ渡される行ごとの操作（「…」メニュー）
+  renderActions?: (s: TodaySessionItem) => ReactNode;
 }) {
   if (sessions.kind === 'loading' || sessions.kind === 'idle') {
     return (
@@ -188,9 +267,12 @@ function DashboardBody({
                     {s.fullName}・{s.grade}
                   </p>
                 </div>
-                <Badge variant={s.isPresent ? 'default' : 'secondary'}>
-                  {s.isPresent ? '来場中' : '退出済'}
-                </Badge>
+                <div className="flex items-center gap-1">
+                  <Badge variant={s.isPresent ? 'default' : 'secondary'}>
+                    {s.isPresent ? '来場中' : '退出済'}
+                  </Badge>
+                  {renderActions && <div className="relative z-10">{renderActions(s)}</div>}
+                </div>
               </div>
               <div className="mt-3 flex flex-col gap-2">
                 {s.term && (
@@ -226,12 +308,17 @@ function DashboardBody({
               <TableHead>チェックイン</TableHead>
               <TableHead>チェックアウト</TableHead>
               <TableHead>状態</TableHead>
+              {renderActions && (
+                <TableHead className="w-12">
+                  <span className="sr-only">操作</span>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={renderActions ? 9 : 8}>
                   <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
                     <IconCalendarOff className="size-8" />
                     <span className="text-sm">
@@ -270,6 +357,9 @@ function DashboardBody({
                       {s.isPresent ? '来場中' : '退出済'}
                     </Badge>
                   </TableCell>
+                  {renderActions && (
+                    <TableCell className="text-right">{renderActions(s)}</TableCell>
+                  )}
                 </TableRow>
               ))
             )}

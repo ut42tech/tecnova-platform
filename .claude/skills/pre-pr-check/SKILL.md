@@ -19,9 +19,10 @@ description: Pre-PR verification gate for tecnova-platform. Use before committin
    ```bash
    pnpm type-check
    ```
-3. **テスト（CI は実行しない・shared を触ったら必須）**:
+3. **テスト（CI は実行しない・該当パッケージを触ったら必須）**:
    ```bash
    pnpm --filter @tecnova/shared test
+   pnpm --filter @tecnova/api test
    ```
 4. **シークレット/PII 走査**（このスキルに同梱）:
    ```bash

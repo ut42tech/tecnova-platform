@@ -11,6 +11,7 @@
     "./activity-cycle": "./src/activity-cycle.ts",
     "./attendance-level": "./src/attendance-level.ts",
     "./visit-summary": "./src/visit-summary.ts",
+    "./session-rules": "./src/session-rules.ts",
     "./youtube": "./src/youtube.ts"
   },
   "scripts": {

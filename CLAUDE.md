@@ -252,6 +252,10 @@ pnpm biome check --write .
 # 型チェック
 pnpm type-check
 
+# テスト（CI では走らない。PR 前に手元で実行）
+pnpm --filter @tecnova/shared test
+pnpm --filter @tecnova/api test
+
 # DB マイグレーション生成（drizzle-kit が SQL を packages/db/drizzle/ に出力）
 pnpm --filter @tecnova/db db:generate
 
