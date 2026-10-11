@@ -218,7 +218,14 @@ export const createPreRegistrationRequestSchema = z.object({
 // `/api/sessions`（POST / PATCH・admin role 専用）— 来場記録の修正
 // 時刻は ISO 8601（UTC・末尾 Z）。画面は JST で入力し、shared の jstDateTimeToInstant で変換して送る。
 const sessionParticipantIdSchema = z.string().regex(/^\d{5}$/, '5-digit participant id required');
-const sessionInstantSchema = z.iso.datetime();
+// 年の打ち間違い（例: 0026 → 1926 年）で開催日の形式が崩れた記録を作らないよう、下限を設ける。
+// 画面の日付入力にも同じ値を min として渡す。
+export const SESSION_EARLIEST_DATE = '2020-01-01';
+const sessionInstantSchema = z.iso
+  .datetime()
+  .refine((v) => v >= `${SESSION_EARLIEST_DATE}T00:00:00`, {
+    message: `must be on or after ${SESSION_EARLIEST_DATE}`,
+  });
 
 export const createSessionRequestSchema = z.object({
   participantId: sessionParticipantIdSchema,

@@ -30,6 +30,18 @@ describe('createSessionRequestSchema', () => {
   });
 });
 
+describe('来場時刻の下限', () => {
+  it('2020 年より前の時刻は弾く（年の打ち間違いで 1926 年などの開催日を作らない）', () => {
+    const r = createSessionRequestSchema.safeParse({
+      participantId: '26001',
+      checkedInAt: '1926-10-11T01:05:00.000Z',
+      checkedOutAt: null,
+    });
+    expect(r.success).toBe(false);
+    expect(updateSessionRequestSchema.safeParse({ checkedOutAt: '0999-10-11T01:05:00.000Z' }).success).toBe(false);
+  });
+});
+
 describe('updateSessionRequestSchema', () => {
   it('項目が 1 つも無いと弾く', () => {
     expect(updateSessionRequestSchema.safeParse({}).success).toBe(false);
