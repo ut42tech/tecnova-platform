@@ -83,6 +83,24 @@ const jstDateFormatter = new Intl.DateTimeFormat('en-CA', {
 // 日付は en-CA フォーマッタから直接得る（壁時計の hour 正規化と独立させ、日跨ぎでも安全）。
 export const toJstDateString = (instant: Date): string => jstDateFormatter.format(instant);
 
+// JST の日付 'YYYY-MM-DD' と時刻 'HH:mm' を UTC instant にする。管理画面で JST 入力した
+// 来場時刻を API（ISO 8601 UTC）へ渡すときに使う。端末のタイムゾーンに依存させないため
+// Date のローカル時刻 API は使わず、固定の UTC+9 を引いて Date.UTC で組み立てる。
+export const jstDateTimeToInstant = (date: string, time: string): Date => {
+  const year = Number.parseInt(date.slice(0, 4), 10);
+  const month = Number.parseInt(date.slice(5, 7), 10);
+  const day = Number.parseInt(date.slice(8, 10), 10);
+  const hour = Number.parseInt(time.slice(0, 2), 10);
+  const minute = Number.parseInt(time.slice(3, 5), 10);
+  return new Date(Date.UTC(year, month - 1, day, hour - JST_OFFSET_HOURS, minute, 0, 0));
+};
+
+// UTC instant を JST の 'HH:mm' にする（フォームの初期値・表示用）。
+export const toJstTimeString = (instant: Date): string => {
+  const { hour, minute } = toJstWallClock(instant);
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
 // 'HH:mm' を 0:00 からの通算分に変換する。区間判定を整数比較に落とすためのヘルパ。
 const toMinutesOfDay = (hhmm: string): number =>
   Number.parseInt(hhmm.slice(0, 2), 10) * 60 + Number.parseInt(hhmm.slice(3, 5), 10);
