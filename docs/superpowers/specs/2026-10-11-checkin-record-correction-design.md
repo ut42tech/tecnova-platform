@@ -25,7 +25,7 @@
 - **修正の履歴は残さない**（最新の状態だけを持つ。DB のテーブル構造は変えない＝マイグレーション不要）
 - **無効化した子の記録も**追加・修正してよい（過去の記録を直す場面のため。受付端末側は従来どおり無効化した子を受け付けない）
 - 「別の子で受付した」場合は、記録の子を**付け替え**られる
-- API の書き込みロジックは、`@cloudflare/vitest-pool-workers` による**自動テスト**で確かめる
+- API の書き込みロジックは、`@cloudflare/vitest-plugin`（Workers 公式の Vitest 連携。旧名 `@cloudflare/vitest-pool-workers`）による**自動テスト**で確かめる
 
 ## 2. 来場記録のルール（不変条件）
 
@@ -80,7 +80,7 @@ DB には制約が無い（一意制約・CHECK・カスケードなし）ため
 - **編集**: 記録（とその開催日）を取得 → 変更をマージ → 新しい子・新しい入場日で既存記録（自分を除く）を取得 → ルール 2〜6 を検証 → `db.batch` で「開催日の作成」「記録の更新（子・開催日・時刻）」「元の開催日が空かつ過去なら削除」を一括実行
 - **削除**: 記録を取得 → `db.batch` で「記録の削除」「その開催日が空かつ過去なら削除」を一括実行
 - 「空かつ過去なら削除」は 1 文で表す: `DELETE FROM events WHERE id = ? AND date <> <今日> AND NOT EXISTS (SELECT 1 FROM sessions WHERE event_id = ?)`
-- 開催日の get-or-create は `apps/api/src/lib/checkin.ts` の `getOrCreateTodayEvent` を日付引数版 `getOrCreateEventByDate` に一般化し、既存の受付経路はそれを今日の日付で呼ぶ（挙動は不変）。batch 内では同等の `INSERT … ON CONFLICT DO NOTHING` を使う
+- 開催日の get-or-create は batch 内の `INSERT … ON CONFLICT(date) DO NOTHING` で行う。受付経路の `getOrCreateTodayEvent`（`apps/api/src/lib/checkin.ts`）は変更しない
 
 ## 4. 共通ロジック（`packages/shared`）
 
@@ -137,7 +137,7 @@ API と管理画面の両方で使う純粋関数。vitest で先にテストを
 | 対象 | 方法 |
 | --- | --- |
 | `session-rules.ts` / JST 変換関数 | `packages/shared` の vitest（既存の 3 系）。先にテストを書く。境界（同時刻・境界で接する区間・1 分の猶予・日付の変わり目・滞在中の重なり）を網羅する |
-| `session-admin.ts`（API の書き込み） | `apps/api` に vitest 4 系 + `@cloudflare/vitest-pool-workers`（0.23 系。peer が vitest ^4.1 のため、`packages/shared` の 3 系とは別に入れる）を導入する。`wrangler.toml` の D1 binding を使い、`packages/db/drizzle` のマイグレーションをテスト用 D1 に当ててから、lib の関数を直接呼ぶ。実行は `pnpm --filter @tecnova/api test` |
+| `session-admin.ts`（API の書き込み） | `apps/api` に `vitest@4.1.11` + `@cloudflare/vitest-plugin@1.2.8`（peer が vitest ^4.1 のため、`packages/shared` の 3 系とは別に入れる。公開から 2 週間以上経った版に固定する）を導入する。`wrangler.toml` の D1 binding を使い、`packages/db/drizzle` のマイグレーションをテスト用 D1 に当ててから、lib の関数を直接呼ぶ。実行は `pnpm --filter @tecnova/api test` |
 | 管理画面 | Playwright で API をモックし、実ブラウザで確認する（QR 修正と同じやり方）。コンソールエラー（無限再レンダー等）が無いことも確認する |
 
 **API テストの主なケース**
@@ -168,14 +168,13 @@ API と管理画面の両方で使う純粋関数。vitest で先にテストを
 1. ドキュメント（mvp.md / requirements.md）
 2. shared: JST 変換関数と `session-rules.ts`（テスト込み）
 3. shared: Zod スキーマ
-4. api: vitest-pool-workers の導入
-5. api: `getOrCreateEventByDate` への一般化
-6. api: `session-admin.ts`（テスト込み）とルート・エラー表
-7. ui: `dialog` の追加
-8. admin: `ParticipantPicker` / `SessionFormDialog` / `SessionDeleteDialog` / `SessionRowActions`
-9. admin: ダッシュボードへの組み込み
-10. admin: 利用者詳細への組み込み
-11. handoff と pre-pr-check の更新
+4. api: `@cloudflare/vitest-plugin` の導入
+5. api: `session-admin.ts`（テスト込み）とルート・エラー表
+6. ui: `dialog` の追加
+7. admin: `ParticipantPicker` / `SessionFormDialog` / `SessionDeleteDialog` / `SessionRowActions`
+8. admin: ダッシュボードへの組み込み
+9. admin: 利用者詳細への組み込み
+10. handoff と pre-pr-check の更新
 
 **リリース**: マイグレーション不要。API は追加のみなので、API（Worker）と管理画面（Vercel）のどちらを先に出しても既存機能は壊れない。
 
@@ -190,6 +189,6 @@ API と管理画面の両方で使う純粋関数。vitest で先にテストを
 ## 10. 参照
 
 - データモデル・既存 API: `docs/mvp.md` §4・§6.2、`packages/db/src/schema.ts`
-- 受付経路の書き込み: `apps/api/src/lib/checkin.ts`（`getOrCreateTodayEvent`・`processScanValue`・`recordBulkCheckOut`）
+- 受付経路の書き込み（変更しない）: `apps/api/src/lib/checkin.ts`（`getOrCreateTodayEvent`・`processScanValue`・`recordBulkCheckOut`）
 - 集計: `apps/api/src/lib/admin.ts`（`fetchSessionsForEvent`・`fetchParticipationSummary`）、`packages/shared/src/venue-schedule.ts`
 - 既存の管理画面の操作パターン: `apps/admin/src/app/(authed)/mentors/page.tsx`・`pre-registrations/page.tsx`
