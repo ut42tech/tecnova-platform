@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { MentorError, type MentorErrorCode } from './admin';
 import { CheckinError, type CheckinErrorCode } from './checkin';
 import { PreRegistrationError, type PreRegistrationErrorCode } from './pre-registrations';
+import { SessionError, type SessionErrorCode } from './session-admin';
 
 export const invalidBodyError = { error: 'INTERNAL' as const, message: 'invalid request body' };
 export const invalidQueryError = {
@@ -35,6 +36,16 @@ const checkinErrorStatus: Record<CheckinErrorCode, ContentfulStatusCode> = {
   SHEETS_WRITE_FAILED: 502,
 };
 
+const sessionErrorStatus: Record<SessionErrorCode, ContentfulStatusCode> = {
+  SESSION_NOT_FOUND: 404,
+  PARTICIPANT_NOT_FOUND: 404,
+  CHECKOUT_BEFORE_CHECKIN: 400,
+  SPANS_DAYS: 400,
+  FUTURE_TIME: 400,
+  OPEN_SESSION_NOT_TODAY: 400,
+  OVERLAP: 409,
+};
+
 // ドメインエラーを HTTP ステータス + JSON にマップして返す Hono の onError ハンドラ。
 // 未知のエラーは 500 INTERNAL に丸める。各ルートで try/catch を書かずに済むよう
 // app.onError(apiErrorHandler) で一括登録して使う。
@@ -47,6 +58,9 @@ export const apiErrorHandler: ErrorHandler = (e, c) => {
   }
   if (e instanceof PreRegistrationError) {
     return c.json({ error: e.code, message: e.message }, preRegistrationErrorStatus[e.code]);
+  }
+  if (e instanceof SessionError) {
+    return c.json({ error: e.code, message: e.message }, sessionErrorStatus[e.code]);
   }
   return c.json(internalError(e), 500);
 };

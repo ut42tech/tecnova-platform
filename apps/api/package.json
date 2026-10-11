@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
+    "test": "vitest run",
     "db:apply:local": "wrangler d1 migrations apply tecnova-db --local",
     "db:apply:remote": "wrangler d1 migrations apply tecnova-db --remote"
   },
@@ -18,8 +19,10 @@
     "hono": "^4.12.16"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.2.8",
     "@cloudflare/workers-types": "^4.20260502.1",
     "typescript": "^6.0.3",
+    "vitest": "4.1.11",
     "wrangler": "^4.87.0"
   }
 }
