@@ -217,3 +217,16 @@ export const updateSessionByAdmin = async (
   ]);
   return toResponse(db, sessionId);
 };
+
+export const deleteSessionByAdmin = async (db: Db, sessionId: string, now: Date): Promise<void> => {
+  const [current] = await db
+    .select({ eventId: sessions.eventId })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+  if (!current) throw sessionNotFound();
+  await db.batch([
+    db.delete(sessions).where(eq(sessions.id, sessionId)),
+    deleteEventIfEmptyPast(db, current.eventId, toJstDateString(now)),
+  ]);
+};
