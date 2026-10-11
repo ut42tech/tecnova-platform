@@ -26,6 +26,8 @@ import { formatJstDate } from '@tecnova/ui/lib/format';
 interface Props {
   participantId: string | null;
   onOpenChange: (open: boolean) => void;
+  // 来場記録を修正したときに親（ダッシュボード）の一覧も再取得させる
+  onSessionsChanged?: () => void;
 }
 
 // ISO 文字列を JST の 'YYYY/MM/DD HH:mm' に整形する。空なら '—'。

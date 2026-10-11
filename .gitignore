@@ -230,3 +230,5 @@ drizzle/.snapshot.*
 
 .vercel
 .superpowers
+# Playwright MCP の作業ファイル（スクリプト・スクリーンショット）
+.playwright-mcp/

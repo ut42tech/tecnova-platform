@@ -16,7 +16,8 @@ const BASE = 'rounded-2xl border bg-card p-4 text-card-foreground shadow-xs';
 // モバイルでテーブルの代わりに使うカード。全ページで見た目を揃えるための共通チップ。
 // onClick を渡すとカード全面に重ねた <button> でタップ可能にする
 // （div + role=button よりアクセシブルで、キーボード操作も標準で効く）。
-// タップ可能カードは内部に他のインタラクティブ要素を持たない前提。
+// タップ可能カードは原則として内部にインタラクティブ要素を持たない。置く場合は `relative z-10` で
+// 全面ボタンより前に出し、クリックの伝播を止める（例: ダッシュボードの来場記録の「…」メニュー）。
 export function RecordCard({ onClick, ariaLabel, className, children }: RecordCardProps) {
   if (onClick === undefined) {
     return <div className={cn(BASE, className)}>{children}</div>;
