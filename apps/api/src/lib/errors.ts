@@ -11,10 +11,12 @@ export const invalidQueryError = {
   message: 'invalid query parameters',
 };
 
-const internalError = (e: unknown) => ({
+const internalError = () => ({
   error: 'INTERNAL' as const,
-  message: e instanceof Error ? e.message : String(e),
+  message: 'internal server error',
 });
+
+const sheetsWriteFailedMessage = 'failed to save data';
 
 const mentorErrorStatus: Record<MentorErrorCode, ContentfulStatusCode> = {
   EMAIL_ALREADY_EXISTS: 409,
@@ -51,16 +53,28 @@ const sessionErrorStatus: Record<SessionErrorCode, ContentfulStatusCode> = {
 // app.onError(apiErrorHandler) で一括登録して使う。
 export const apiErrorHandler: ErrorHandler = (e, c) => {
   if (e instanceof CheckinError) {
-    return c.json({ error: e.code, message: e.message }, checkinErrorStatus[e.code]);
+    return c.json(
+      {
+        error: e.code,
+        message: e.code === 'SHEETS_WRITE_FAILED' ? sheetsWriteFailedMessage : e.message,
+      },
+      checkinErrorStatus[e.code],
+    );
   }
   if (e instanceof MentorError) {
     return c.json({ error: e.code, message: e.message }, mentorErrorStatus[e.code]);
   }
   if (e instanceof PreRegistrationError) {
-    return c.json({ error: e.code, message: e.message }, preRegistrationErrorStatus[e.code]);
+    return c.json(
+      {
+        error: e.code,
+        message: e.code === 'SHEETS_WRITE_FAILED' ? sheetsWriteFailedMessage : e.message,
+      },
+      preRegistrationErrorStatus[e.code],
+    );
   }
   if (e instanceof SessionError) {
     return c.json({ error: e.code, message: e.message }, sessionErrorStatus[e.code]);
   }
-  return c.json(internalError(e), 500);
+  return c.json(internalError(), 500);
 };
